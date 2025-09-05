@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2. 享元模式 (Flyweight) - Godot游戏编程模式</title>
+    <!-- Prism.js CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .hero-header {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 50%, #0f1419 100%);
+            border-bottom: 3px solid #00ffcc;
+            padding: 35px 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.3), inset 0 1px 0 rgba(0, 255, 204, 0.2);
+            border-top: 1px solid #00ffcc;
+            z-index: 998; /* 降低z-index，确保sidebar在更高层 */
+            min-height: 180px;
+        }
+        
+        /* 扫描线效果 */
+        .hero-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            animation: scanline 4s infinite;
+            z-index: 3;
+        }
+        
+        /* 数据流背景 */
+        .hero-header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 98%, rgba(0, 255, 204, 0.03) 100%),
+                linear-gradient(180deg, transparent 98%, rgba(255, 0, 255, 0.03) 100%);
+            background-size: 20px 20px;
+            animation: dataflow 20s linear infinite;
+            z-index: 1;
+        }
+        
+        /* 额外的装饰层 */
+        .hero-header .decorative-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 204, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 204, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 10s linear infinite;
+            z-index: 1;
+        }
+        
+        .hero-header .glitch-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(255, 0, 255, 0.1) 50%, 
+                transparent 70%);
+            animation: glitchScan 3s ease-in-out infinite;
+            z-index: 2;
+        }
+        
+        @keyframes scanline {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+        
+        @keyframes dataflow {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(20px, 20px); }
+        }
+        
+        @keyframes subtitleFlicker {
+            0%, 100% { opacity: 1; }
+            90% { opacity: 1; }
+            95% { opacity: 0.7; }
+            97% { opacity: 1; }
+        }
+        
+        @keyframes diamondSpin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+        
+        @keyframes descriptionGlow {
+            0% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
+        }
+        
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        @keyframes glitchScan {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        
+        @keyframes hudLineGlow {
+            0%, 100% { opacity: 0.3; box-shadow: 0 0 5px rgba(0, 255, 204, 0.5); }
+            50% { opacity: 1; box-shadow: 0 0 15px rgba(0, 255, 204, 0.8); }
+        }
+        
+        .cyberpunk-container {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .hero-title {
+            font-size: 3.5em;
+            color: #00ffcc;
+            text-shadow: 
+                0 0 10px #00ffcc,
+                0 0 20px #00ffcc,
+                0 0 40px #00ffcc,
+                0 0 60px #00ffcc,
+                0 0 80px rgba(0, 255, 204, 0.8);
+            margin-bottom: 12px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            animation: titleGlow 3s ease-in-out infinite alternate, titlePulse 2s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-title::before {
+            content: '🎮';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        
+        .hero-title::after {
+            content: '⚡';
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite reverse;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+            100% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc, 0 0 60px #00ffcc, 0 0 80px rgba(0, 255, 204, 0.8); }
+        }
+        
+        @keyframes titlePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(-50%) rotate(0deg); }
+            50% { transform: translateY(-60%) rotate(10deg); }
+        }
+        
+        .hero-subtitle {
+            font-size: 1.3em;
+            color: #ff00ff;
+            text-shadow: 0 0 15px rgba(255, 0, 255, 0.8), 0 0 25px rgba(255, 0, 255, 0.6);
+            margin-bottom: 25px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: subtitleFlicker 4s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-subtitle::before,
+        .hero-subtitle::after {
+            content: '◆';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00ffcc;
+            font-size: 0.7em;
+            animation: diamondSpin 6s linear infinite;
+        }
+        
+        .hero-subtitle::before {
+            left: -30px;
+        }
+        
+        .hero-subtitle::after {
+            right: -30px;
+            animation-direction: reverse;
+        }
+        
+        .hero-description {
+            font-size: 1.0em;
+            color: #a0a0a0;
+            max-width: 800px;
+            margin: 0 auto 25px;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+            position: relative;
+            padding: 15px;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 255, 204, 0.05);
+            animation: descriptionGlow 5s ease-in-out infinite alternate;
+        }
+        
+        .hero-description::before {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        .hero-description br::after {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        /* HUD 装饰元素 */
+        .hud-elements {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            margin: 20px auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* HUD边框装饰 */
+        .hud-elements::before,
+        .hud-elements::after {
+            content: '';
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            width: 100%;
+            left: 0;
+        }
+        
+        .hud-elements::before {
+            top: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite;
+        }
+        
+        .hud-elements::after {
+            bottom: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite reverse;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* 电量指示器 */
+        .battery-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #00ffcc;
+        }
+        
+        .battery {
+            width: 30px;
+            height: 12px;
+            border: 1px solid #00ffcc;
+            border-radius: 2px;
+            position: relative;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+        }
+        
+        .battery::after {
+            content: '';
+            position: absolute;
+            right: -3px;
+            top: 3px;
+            width: 2px;
+            height: 6px;
+            background: #00ffcc;
+            border-radius: 0 1px 1px 0;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc);
+            border-radius: 1px;
+            animation: batteryCharge 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        @keyframes batteryCharge {
+            0% { width: 70%; }
+            50% { width: 100%; }
+            100% { width: 70%; }
+        }
+        
+        /* 像素风进度条 */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff00ff;
+        }
+        
+        .progress-container {
+            width: 80px;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #ff00ff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc, #ff00ff);
+            background-size: 200% 100%;
+            animation: progressFlow 3s linear infinite;
+            width: 65%;
+            box-shadow: 0 0 8px rgba(255, 0, 255, 0.6);
+        }
+        
+        @keyframes progressFlow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* 系统状态指示 */
+        .system-status {
+            color: #00ffcc;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #00ffcc;
+            animation: statusBlink 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+        }
+        
+        @keyframes statusBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        /* 数据传输指示 */
+        .data-transfer {
+            color: #ff00ff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .transfer-icon {
+            font-size: 10px;
+            animation: dataTransfer 1s linear infinite;
+        }
+        
+        @keyframes dataTransfer {
+            0% { transform: translateX(-3px); opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { transform: translateX(3px); opacity: 0.3; }
+        }
+        
+        .geometric-line {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            margin: 8px auto;
+            width: 400px;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+            animation: geometricPulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes geometricPulse {
+            0%, 100% { opacity: 0.6; width: 400px; }
+            50% { opacity: 1; width: 500px; }
+        }
+        
+        /* 角落装饰 */
+        .corner-decoration {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #00ffcc;
+            z-index: 2;
+        }
+        
+        .corner-tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .corner-tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        /* 额外的装饰元素 - 内层 */
+        .corner-tl2 {
+            top: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+        }
+        
+        .corner-tr2 {
+            top: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-bl2 {
+            bottom: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-br2 {
+            bottom: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        /* 电路板线条效果 */
+        .circuit-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .circuit-lines::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(0, 255, 204, 0.2) 20%, 
+                rgba(255, 0, 255, 0.2) 50%, 
+                rgba(0, 255, 204, 0.2) 80%, 
+                transparent 100%);
+            animation: circuitFlow 8s linear infinite;
+        }
+        
+        .circuit-lines::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                rgba(255, 0, 255, 0.1) 30%, 
+                rgba(0, 255, 204, 0.1) 70%, 
+                transparent 100%);
+            animation: circuitFlow 6s linear infinite reverse;
+        }
+        
+        @keyframes circuitFlow {
+            0% { opacity: 0.2; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.2; }
+        }
+        
+        /* 加强响应式设计 */
+        @media (max-width: 768px) {
+            .hud-elements {
+                flex-direction: column;
+                gap: 10px;
+                font-size: 0.7em;
+            }
+            
+            .hud-left, .hud-right {
+                gap: 15px;
+            }
+            
+            .hero-title {
+                font-size: 2.2em;
+                letter-spacing: 2px;
+            }
+            
+            .corner-decoration {
+                width: 25px;
+                height: 25px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 2px solid #00ffcc;
+                margin-bottom: 20px;
+                padding: 15px;
+                z-index: 9999; /* 确保移动端sidebar也在最高层 */
+            }
+            
+            .main-content {
+                margin-left: 0;
+                max-width: 100%;
+                padding: 15px;
+                margin-top: 0;
+            }
+            
+            .container {
+                display: block;
+                min-height: calc(100vh - 150px);
+            }
+            
+            /* 移动端目录切换按钮 */
+            .sidebar-toggle {
+                display: block;
+                background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+                color: #0a0a0a;
+                border: none;
+                padding: 10px 15px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                border-radius: 6px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .sidebar-toggle:hover {
+                background: linear-gradient(90deg, #00cc99 0%, #00ffcc 100%);
+            }
+            
+            .sidebar.collapsed {
+                display: none;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar-toggle {
+                display: none;
+            }
+        }
+        
+        .container {
+            display: flex;
+            min-height: calc(100vh - 150px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: linear-gradient(180deg, #16213e 0%, #0f1419 100%);
+            border-right: 2px solid #00ffcc;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0, 255, 204, 0.1);
+            position: fixed;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            top: 200px;
+            z-index: 9999; /* 确保sidebar在最高层 */
+            border-top: 2px solid #00ffcc;
+        }
+        
+        .sidebar h2 {
+            color: #00ffcc;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.1em;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            border-bottom: 1px solid #00ffcc;
+            padding-bottom: 10px;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar li {
+            margin-bottom: 6px;
+        }
+        
+        .sidebar .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            margin: 15px 0;
+        }
+        
+        .sidebar .home-link a {
+            color: #ffaa00;
+            background: rgba(255, 170, 0, 0.1);
+            border-left: 3px solid #ffaa00;
+            font-weight: bold;
+        }
+        
+        .sidebar .home-link a:hover {
+            background: rgba(255, 170, 0, 0.2);
+            color: #ffcc44;
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.6);
+        }
+        
+        .sidebar a {
+            color: #a0a0a0;
+            text-decoration: none;
+            padding: 8px 12px;
+            display: block;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-size: 0.9em;
+        }
+        
+        .sidebar a:hover {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .sidebar .active a {
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: 300px;
+            padding: 40px;
+            max-width: calc(100% - 300px);
+            margin-top: 20px;
+            position: relative;
+            z-index: 1; /* 确保主内容在sidebar下方 */
+        }
+        
+        .page-header {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .page-header h1 {
+            color: #00ffcc;
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+        
+        .content {
+            background: rgba(22, 33, 62, 0.3);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            color: #00ffcc;
+            margin: 30px 0 15px 0;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .content h1 { font-size: 2em; }
+        .content h2 { font-size: 1.7em; }
+        .content h3 { font-size: 1.4em; }
+        .content h4 { font-size: 1.2em; color: #88ffaa; }
+        .content h5 { font-size: 1.1em; color: #88ffaa; }
+        .content h6 { font-size: 1em; color: #88ffaa; }
+        
+        .content-paragraph {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            line-height: 1.8;
+        }
+        
+        .content-list {
+            margin: 15px 0;
+            padding-left: 25px;
+            color: #d0d0d0;
+        }
+        
+        .content-list li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .content-list.numbered {
+            list-style-type: decimal;
+        }
+        
+        .inline-code {
+            background: rgba(0, 255, 204, 0.15);
+            color: #00ff88;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+        }
+        
+        .code-block-wrapper {
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #00ffcc;
+            box-shadow: 0 4px 15px rgba(0, 255, 204, 0.1);
+        }
+        
+        .code-block-header {
+            background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+            color: #0a0a0a;
+            padding: 8px 15px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-align: left;
+        }
+        
+        .code-language {
+            font-family: 'Consolas', 'Monaco', monospace;
+            letter-spacing: 1px;
+        }
+        
+        .code-block {
+            background: #0d1421;
+            margin: 0;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            color: #e0e0e0;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            border: none;
+        }
+        
+        .collapsible-section {
+            margin: 20px 0;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 8px;
+            background: rgba(22, 33, 62, 0.2);
+        }
+        
+        .collapsible-header {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2);
+            transition: background 0.3s ease;
+        }
+        
+        .collapsible-header:hover {
+            background: rgba(0, 255, 204, 0.2);
+        }
+        
+        .collapsible-content {
+            padding: 15px 20px;
+        }
+        
+        .quote-block {
+            border-left: 4px solid #00ffcc;
+            background: rgba(0, 255, 204, 0.05);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            color: #d0d0d0;
+            font-style: italic;
+        }
+        
+        .content-link {
+            color: #00ffcc;
+            text-decoration: none;
+            border-bottom: 1px dotted #00ffcc;
+            transition: all 0.3s ease;
+        }
+        
+        .content-link:hover {
+            color: #ffffff;
+            border-bottom-style: solid;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+        }
+
+        
+        .qr-section {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .qr-section img {
+            max-width: 200px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        
+        .qr-section p {
+            color: #00ffcc;
+            font-size: 1.1em;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.2em;
+            }
+            .sidebar {
+                width: 250px;
+            }
+            .main-content {
+                margin-left: 250px;
+                max-width: calc(100% - 250px);
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="hero-header">
+        <!-- 电路板线条背景 -->
+        <div class="circuit-lines"></div>
+        
+        <!-- 装饰网格层 -->
+        <div class="decorative-grid"></div>
+        
+        <!-- 故障艺术扫描层 -->
+        <div class="glitch-overlay"></div>
+        
+        <!-- 角落装饰 -->
+        <div class="corner-decoration corner-tl"></div>
+        <div class="corner-decoration corner-tr"></div>
+        <div class="corner-decoration corner-bl"></div>
+        <div class="corner-decoration corner-br"></div>
+        
+        <!-- 额外的装饰元素 -->
+        <div class="corner-decoration corner-tl2"></div>
+        <div class="corner-decoration corner-tr2"></div>
+        <div class="corner-decoration corner-bl2"></div>
+        <div class="corner-decoration corner-br2"></div>
+        
+        <div class="cyberpunk-container">
+            <!-- HUD 上部状态栏 -->
+            <div class="hud-elements">
+                <div class="hud-left">
+                    <div class="system-status">
+                        <div class="status-dot"></div>
+                        <span>SYSTEM: ONLINE</span>
+                    </div>
+                    <div class="battery-indicator">
+                        <span>PWR:</span>
+                        <div class="battery">
+                            <div class="battery-fill"></div>
+                        </div>
+                        <span>87%</span>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <div class="progress-bar">
+                        <span>DATA:</span>
+                        <div class="progress-container">
+                            <div class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="data-transfer">
+                        <span class="transfer-icon">▲▼</span>
+                        <span>SYNC</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主标题区域 -->
+            <h1 class="hero-title">🎮 Godot游戏编程模式</h1>
+            <div class="geometric-line"></div>
+            <p class="hero-subtitle">[ NEURAL LINK ESTABLISHED ]</p>
+            <p class="hero-description">
+                > ACCESSING DESIGN PATTERNS DATABASE...<br>
+                > CYBERPUNK PROGRAMMING PROTOCOLS LOADED<br>
+                > STATUS: READY FOR NEURAL DOWNLOAD
+            </p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <nav class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle">📚 教程目录</button>
+            <h2>📚 教程目录</h2>
+            <ul>
+                <li class="home-link">
+                    <a href="index.html">🏠 返回首页</a>
+                </li>
+                <li class="divider"></li><li class="">
+                    <a href="introduction.html">📖 引言</a>
+                </li>
+                <li class="">
+                    <a href="command.html">1. 命令模式 (Command)</a>
+                </li>
+                <li class="active">
+                    <a href="flyweight.html">2. 享元模式 (Flyweight)</a>
+                </li>
+                <li class="">
+                    <a href="observer.html">3. 观察者模式 (Observer)</a>
+                </li>
+                <li class="">
+                    <a href="prototype.html">4. 原型 (Prototype)</a>
+                </li>
+                <li class="">
+                    <a href="game-loop.html">5. 游戏循环 (Game Loop)</a>
+                </li>
+                <li class="">
+                    <a href="update-method.html">6. 更新方法 (Update Method)</a>
+                </li>
+                <li class="">
+                    <a href="bytecode.html">7. 字节码 (Bytecode)</a>
+                </li>
+                <li class="">
+                    <a href="subclass-sandbox.html">8. 子类沙盒 (Subclass Sandbox)</a>
+                </li>
+                <li class="">
+                    <a href="type-object.html">9. 类型对象 (Type Object)</a>
+                </li>
+                <li class="">
+                    <a href="component.html">10. 组件 (Component)</a>
+                </li>
+                <li class="">
+                    <a href="event-queue.html">11. 事件队列 (Event Queue)</a>
+                </li>
+                <li class="">
+                    <a href="service-locator.html">12. 服务定位器 (Service Locator)</a>
+                </li>
+                <li class="">
+                    <a href="data-locality.html">13. 数据局部性 (Data Locality)</a>
+                </li>
+                <li class="">
+                    <a href="dirty-flag.html">14. 脏标记 (Dirty Flag)</a>
+                </li>
+                <li class="">
+                    <a href="object-pool.html">15. 对象池 (Object Pool)</a>
+                </li>
+                <li class="">
+                    <a href="spatial-partition.html">16. 空间分区 (Spatial Partition)</a>
+                </li>
+            </ul>
+        </nav>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <h1>2. 享元模式 (Flyweight)</h1>
+            </header>
+            
+            <div class="content">
+                <h3>第2章 - 享元模式 (Flyweight)</h3>
+
+<h4><strong>2.1 动机</strong></h4>
+
+<p class="content-paragraph">想象一下，你想在游戏中创建一个广阔的森林，里面有成千上万棵树。或者一个战场，上面布满了无数的草、石头和灌木。如果每一个对象（每一棵树、每一片草）都是一个独立的实例，拥有自己的模型（Mesh）、材质（Material）和贴图（Texture），内存消耗将会急剧上升，很快就会达到硬件的极限。</p>
+
+<p class="content-paragraph">享元模式的目的是通过共享尽可能多的数据来最小化内存使用。它将一个对象的状态分为两部分：<br><ul class="content-list"><li><strong>内在状态 (Intrinsic State)</strong>: 这是可以在多个对象之间共享的数据。对于一棵树来说，这可能是它的3D模型、树皮和树叶的贴图。这些数据对于同一种类的树来说是完全相同的。</li></ul><br><ul class="content-list"><li><strong>外在状态 (Extrinsic State)</strong>: 这是每个对象独有的数据，不能被共享。对于一棵树来说，这包括它的位置、旋转、缩放比例和当前的健康状况。每棵树在世界中的位置都是独一无二的。</li></ul></p>
+
+<p class="content-paragraph">享元模式就是将内在状态提取到一个单独的"享元对象"中，然后让所有原始对象持有对这个共享享元对象的引用。这样一来，成千上万棵树可以共享同一个模型和一套贴图，我们只需要为每棵树存储其独特的位置、旋转等外在状态即可。</p>
+
+<h4><strong>2.2 Godot中的实现方式：资源 (Resource)</strong></h4>
+
+Godot的 <strong>资源（Resource）</strong> 系统是享元模式的完美原生实现。当你从磁盘加载一个资源时，例如 <code class="inline-code">var texture = GD.Load&lt;Texture2D&gt;(&quot;res://tree_bark.png&quot;)</code>，Godot会检查这个资源是否已经被加载过。如果已经加载，它会返回对现有资源的引用；如果尚未加载，它会加载资源，将其存储在缓存中，然后返回引用。
+
+这意味着，无论你在多少个不同的节点中加载 <code class="inline-code">&quot;res://tree_bark.png&quot;</code>，内存中始终只有一份贴图数据。所有的<code class="inline-code">Sprite2D</code>或<code class="inline-code">MeshInstance3D</code>节点都共享这同一个资源实例。这同样适用于<code class="inline-code">Mesh</code>、<code class="inline-code">Material</code>、<code class="inline-code">AudioStream</code>以及我们接下来要创建的自定义资源。
+
+<p class="content-paragraph">利用这个机制，我们可以创建一个自定义资源来代表我们树的"类型"，即它的内在状态。</p>
+
+<h4><strong>2.3 实现：创建森林</strong></h4>
+
+我们将创建一个<code class="inline-code">TreeType</code>自定义资源来存储共享数据，然后创建一个<code class="inline-code">Tree</code>节点来表示世界中的每一棵树，它只存储自己的位置信息。
+
+<p class="content-paragraph"><strong>1. 定义享元对象（自定义资源）</strong></p>
+
+创建一个<code class="inline-code">TreeType.cs</code>脚本，它继承自<code class="inline-code">Resource</code>。这个类将保存所有树共享的数据。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// TreeType.cs
+using Godot;
+
+// [GlobalClass] 属性让这个自定义资源可以在Godot编辑器中被创建
+[GlobalClass]
+public partial class TreeType : Resource
+{
+    // 内在状态：所有同类树共享的数据
+    [Export] public Mesh TreeMesh { get; private set; }
+    [Export] public Material BarkMaterial { get; private set; }
+    [Export] public Material LeavesMaterial { get; private set; }
+
+    // 提供一个无参数的构造函数是Godot所必需的
+    public TreeType() { }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># TreeType.gd
+class_name TreeType
+extends Resource
+
+# 内在状态：所有同类树共享的数据
+@export var tree_mesh: Mesh
+@export var bark_material: Material
+@export var leaves_material: Material
+
+# GDScript 中Resource类会自动处理初始化</code></pre>
+        </div>
+            </div>
+        </details>
+
+<strong>2. 在Godot编辑器中创建资源</strong>
+<ul class="content-list"><li>在文件系统面板中右键 -> 新建... -> 资源... -> 选择 <code class="inline-code">TreeType</code>。</li></ul>
+<ul class="content-list"><li>将其保存为 <code class="inline-code">birch_tree_type.tres</code>。</li></ul>
+<ul class="content-list"><li>在检查器中，为这个资源分配一个<code class="inline-code">Mesh</code>（例如一个<code class="inline-code">CylinderMesh</code>）和相应的材质。</li></ul>
+
+<p class="content-paragraph"><strong>3. 创建使用享元的外部对象</strong></p>
+
+现在创建<code class="inline-code">Tree.cs</code>脚本，它代表世界中的一棵具体的树。它将引用共享的<code class="inline-code">TreeType</code>资源。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// Tree.cs
+using Godot;
+
+public partial class Tree : MeshInstance3D
+{
+    // 外在状态：每棵树独有的数据
+    // 位置、旋转、缩放等Transform信息由Node3D基类自带
+    public float Health { get; private set; } = 100.0f;
+
+    private TreeType _treeType;
+
+    public void Initialize(TreeType treeType, Vector3 position)
+    {
+        _treeType = treeType;
+        Position = position;
+        
+        // 应用共享的内在状态
+        this.Mesh = _treeType.TreeMesh;
+        // 在Godot中，材质是Mesh的一部分，通常这样设置：
+        // this.SetSurfaceMaterial(0, _treeType.BarkMaterial);
+        // this.SetSurfaceMaterial(1, _treeType.LeavesMaterial);
+    }
+    
+    public void TakeDamage(float amount)
+    {
+        Health -= amount;
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># Tree.gd
+class_name Tree
+extends MeshInstance3D
+
+# 外在状态：每棵树独有的数据
+# 位置、旋转、缩放等Transform信息由Node3D基类自带
+var health: float = 100.0
+
+var _tree_type: TreeType
+
+func initialize(tree_type: TreeType, pos: Vector3) -&gt; void:
+	_tree_type = tree_type
+	position = pos
+	
+	# 应用共享的内在状态
+	mesh = _tree_type.tree_mesh
+	# 在Godot中，材质是Mesh的一部分，通常这样设置：
+	# set_surface_override_material(0, _tree_type.bark_material)
+	# set_surface_override_material(1, _tree_type.leaves_material)
+
+func take_damage(amount: float) -&gt; void:
+	health -= amount</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>4. 创建森林（客户端代码）</strong></p>
+
+最后，一个<code class="inline-code">ForestManager</code>节点负责在世界中生成成千上万棵树。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// ForestManager.cs
+using Godot;
+
+public partial class ForestManager : Node3D
+{
+    [Export] private TreeType _birchTreeType; // 在编辑器中拖入 birch_tree_type.tres
+    [Export] private int _treeCount = 5000;
+    [Export] private float _forestAreaSize = 200.0f;
+
+    public override void _Ready()
+    {
+        GenerateForest();
+    }
+
+    private void GenerateForest()
+    {
+        GD.Print(__CODEBLOCK_4__quot;Generating a forest with {_treeCount} trees...&quot;);
+        
+        for (int i = 0; i &lt; _treeCount; i++)
+        {
+            var tree = new Tree();
+            
+            // 随机生成位置（外在状态）
+            float x = (float)GD.RandRange(-_forestAreaSize / 2, _forestAreaSize / 2);
+            float z = (float)GD.RandRange(-_forestAreaSize / 2, _forestAreaSize / 2);
+            Vector3 position = new Vector3(x, 0, z);
+            
+            // 使用共享的TreeType进行初始化
+            tree.Initialize(_birchTreeType, position);
+            
+            AddChild(tree);
+        }
+        
+        GD.Print(&quot;Forest generation complete.&quot;);
+        // 注意：内存占用远低于5000个独立模型和材质的总和
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># ForestManager.gd
+class_name ForestManager
+extends Node3D
+
+@export var birch_tree_type: TreeType # 在编辑器中拖入 birch_tree_type.tres
+@export var tree_count: int = 5000
+@export var forest_area_size: float = 200.0
+
+func _ready() -&gt; void:
+	generate_forest()
+
+func generate_forest() -&gt; void:
+	print(&quot;生成包含 &quot;, tree_count, &quot; 棵树的森林...&quot;)
+	
+	for i in range(tree_count):
+		var tree = Tree.new()
+		
+		# 随机生成位置（外在状态）
+		var x = randf_range(-forest_area_size / 2, forest_area_size / 2)
+		var z = randf_range(-forest_area_size / 2, forest_area_size / 2)
+		var pos = Vector3(x, 0, z)
+		
+		# 使用共享的TreeType进行初始化
+		tree.initialize(birch_tree_type, pos)
+		
+		add_child(tree)
+	
+	print(&quot;森林生成完成&quot;)
+	# 注意：内存占用远低于5000个独立模型和材质的总和</code></pre>
+        </div>
+            </div>
+        </details>
+
+<h4><strong>2.4 游戏案例</strong></h4>
+<ul class="content-list"><li><strong>渲染优化</strong>: 如上例所示，用于渲染大量重复的场景装饰物，如植被、岩石、建筑等。这在开放世界游戏中尤为重要。</li></ul>
+<ul class="content-list"><li><strong>粒子系统</strong>: Godot的<code class="inline-code">GPUParticles3D</code> / <code class="inline-code">GPUParticles2D</code> 将享元模式发挥到了极致。所有粒子共享相同的处理材质（Process Material）和贴图，只有每个粒子的生命周期、速度、颜色等外在状态是独立计算的，而且这些计算都在GPU上完成，效率极高。</li></ul>
+<ul class="content-list"><li><strong>瓦片地图 (TileMap)</strong>: <code class="inline-code">TileMap</code> 是享元模式的另一个典型例子。整个地图可能由数百万个瓦片构成，但内存中只需要存储<code class="inline-code">TileSet</code>资源，其中包含每种瓦片的贴图和碰撞信息。每个瓦片在地图上的位置只是一个简单的坐标记录。</li></ul>
+
+<h4><strong>2.5 使用建议与注意事项</strong></h4>
+<ul class="content-list"><li><strong>Godot已经为你做了很多</strong>: 在使用Godot时，请记住其资源系统已经是享元模式的强大实现了。优先使用<code class="inline-code">Resource</code>来存储共享数据，而不是自己从头构建享元系统。</li></ul>
+<ul class="content-list"><li><strong>区分内在与外在</strong>: 设计时最关键的一步是正确地区分哪些状态可以共享（内在），哪些必须是唯一的（外在）。</li></ul>
+<ul class="content-list"><li><strong>管理外在状态</strong>: 享元模式以增加程序复杂性为代价来节省内存。你需要一个地方来存储和管理所有对象的外在状态（在我们的例子中，<code class="inline-code">ForestManager</code>扮演了这个角色）。</li></ul>
+<ul class="content-list"><li><strong>无法单独修改共享状态</strong>: 修改一个享元对象（例如，改变<code class="inline-code">TreeType</code>中的<code class="inline-code">Mesh</code>）会立即影响到所有引用它的对象。这既是它的优点，也可能在不希望共享改变时成为缺点。如果需要一个独立副本，可以使用<code class="inline-code">Resource.Duplicate()</code>方法。</li></ul>
+
+<p class="content-paragraph">---</p>
+            </div>
+            
+            <div class="qr-section">
+                <img src="qr_code.png" alt="Buy Me A Coffee QR Code" />
+                <p>如果对你有帮助，Buy Me A Coffee～</p>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // 移动端目录切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                });
+            }
+        });
+    </script>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-gdscript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>

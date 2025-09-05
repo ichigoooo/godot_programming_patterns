@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>10. 组件 (Component) - Godot游戏编程模式</title>
+    <!-- Prism.js CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .hero-header {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 50%, #0f1419 100%);
+            border-bottom: 3px solid #00ffcc;
+            padding: 35px 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.3), inset 0 1px 0 rgba(0, 255, 204, 0.2);
+            border-top: 1px solid #00ffcc;
+            z-index: 998; /* 降低z-index，确保sidebar在更高层 */
+            min-height: 180px;
+        }
+        
+        /* 扫描线效果 */
+        .hero-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            animation: scanline 4s infinite;
+            z-index: 3;
+        }
+        
+        /* 数据流背景 */
+        .hero-header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 98%, rgba(0, 255, 204, 0.03) 100%),
+                linear-gradient(180deg, transparent 98%, rgba(255, 0, 255, 0.03) 100%);
+            background-size: 20px 20px;
+            animation: dataflow 20s linear infinite;
+            z-index: 1;
+        }
+        
+        /* 额外的装饰层 */
+        .hero-header .decorative-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 204, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 204, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 10s linear infinite;
+            z-index: 1;
+        }
+        
+        .hero-header .glitch-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(255, 0, 255, 0.1) 50%, 
+                transparent 70%);
+            animation: glitchScan 3s ease-in-out infinite;
+            z-index: 2;
+        }
+        
+        @keyframes scanline {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+        
+        @keyframes dataflow {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(20px, 20px); }
+        }
+        
+        @keyframes subtitleFlicker {
+            0%, 100% { opacity: 1; }
+            90% { opacity: 1; }
+            95% { opacity: 0.7; }
+            97% { opacity: 1; }
+        }
+        
+        @keyframes diamondSpin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+        
+        @keyframes descriptionGlow {
+            0% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
+        }
+        
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        @keyframes glitchScan {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        
+        @keyframes hudLineGlow {
+            0%, 100% { opacity: 0.3; box-shadow: 0 0 5px rgba(0, 255, 204, 0.5); }
+            50% { opacity: 1; box-shadow: 0 0 15px rgba(0, 255, 204, 0.8); }
+        }
+        
+        .cyberpunk-container {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .hero-title {
+            font-size: 3.5em;
+            color: #00ffcc;
+            text-shadow: 
+                0 0 10px #00ffcc,
+                0 0 20px #00ffcc,
+                0 0 40px #00ffcc,
+                0 0 60px #00ffcc,
+                0 0 80px rgba(0, 255, 204, 0.8);
+            margin-bottom: 12px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            animation: titleGlow 3s ease-in-out infinite alternate, titlePulse 2s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-title::before {
+            content: '🎮';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        
+        .hero-title::after {
+            content: '⚡';
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite reverse;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+            100% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc, 0 0 60px #00ffcc, 0 0 80px rgba(0, 255, 204, 0.8); }
+        }
+        
+        @keyframes titlePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(-50%) rotate(0deg); }
+            50% { transform: translateY(-60%) rotate(10deg); }
+        }
+        
+        .hero-subtitle {
+            font-size: 1.3em;
+            color: #ff00ff;
+            text-shadow: 0 0 15px rgba(255, 0, 255, 0.8), 0 0 25px rgba(255, 0, 255, 0.6);
+            margin-bottom: 25px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: subtitleFlicker 4s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-subtitle::before,
+        .hero-subtitle::after {
+            content: '◆';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00ffcc;
+            font-size: 0.7em;
+            animation: diamondSpin 6s linear infinite;
+        }
+        
+        .hero-subtitle::before {
+            left: -30px;
+        }
+        
+        .hero-subtitle::after {
+            right: -30px;
+            animation-direction: reverse;
+        }
+        
+        .hero-description {
+            font-size: 1.0em;
+            color: #a0a0a0;
+            max-width: 800px;
+            margin: 0 auto 25px;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+            position: relative;
+            padding: 15px;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 255, 204, 0.05);
+            animation: descriptionGlow 5s ease-in-out infinite alternate;
+        }
+        
+        .hero-description::before {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        .hero-description br::after {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        /* HUD 装饰元素 */
+        .hud-elements {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            margin: 20px auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* HUD边框装饰 */
+        .hud-elements::before,
+        .hud-elements::after {
+            content: '';
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            width: 100%;
+            left: 0;
+        }
+        
+        .hud-elements::before {
+            top: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite;
+        }
+        
+        .hud-elements::after {
+            bottom: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite reverse;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* 电量指示器 */
+        .battery-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #00ffcc;
+        }
+        
+        .battery {
+            width: 30px;
+            height: 12px;
+            border: 1px solid #00ffcc;
+            border-radius: 2px;
+            position: relative;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+        }
+        
+        .battery::after {
+            content: '';
+            position: absolute;
+            right: -3px;
+            top: 3px;
+            width: 2px;
+            height: 6px;
+            background: #00ffcc;
+            border-radius: 0 1px 1px 0;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc);
+            border-radius: 1px;
+            animation: batteryCharge 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        @keyframes batteryCharge {
+            0% { width: 70%; }
+            50% { width: 100%; }
+            100% { width: 70%; }
+        }
+        
+        /* 像素风进度条 */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff00ff;
+        }
+        
+        .progress-container {
+            width: 80px;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #ff00ff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc, #ff00ff);
+            background-size: 200% 100%;
+            animation: progressFlow 3s linear infinite;
+            width: 65%;
+            box-shadow: 0 0 8px rgba(255, 0, 255, 0.6);
+        }
+        
+        @keyframes progressFlow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* 系统状态指示 */
+        .system-status {
+            color: #00ffcc;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #00ffcc;
+            animation: statusBlink 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+        }
+        
+        @keyframes statusBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        /* 数据传输指示 */
+        .data-transfer {
+            color: #ff00ff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .transfer-icon {
+            font-size: 10px;
+            animation: dataTransfer 1s linear infinite;
+        }
+        
+        @keyframes dataTransfer {
+            0% { transform: translateX(-3px); opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { transform: translateX(3px); opacity: 0.3; }
+        }
+        
+        .geometric-line {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            margin: 8px auto;
+            width: 400px;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+            animation: geometricPulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes geometricPulse {
+            0%, 100% { opacity: 0.6; width: 400px; }
+            50% { opacity: 1; width: 500px; }
+        }
+        
+        /* 角落装饰 */
+        .corner-decoration {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #00ffcc;
+            z-index: 2;
+        }
+        
+        .corner-tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .corner-tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        /* 额外的装饰元素 - 内层 */
+        .corner-tl2 {
+            top: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+        }
+        
+        .corner-tr2 {
+            top: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-bl2 {
+            bottom: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-br2 {
+            bottom: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        /* 电路板线条效果 */
+        .circuit-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .circuit-lines::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(0, 255, 204, 0.2) 20%, 
+                rgba(255, 0, 255, 0.2) 50%, 
+                rgba(0, 255, 204, 0.2) 80%, 
+                transparent 100%);
+            animation: circuitFlow 8s linear infinite;
+        }
+        
+        .circuit-lines::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                rgba(255, 0, 255, 0.1) 30%, 
+                rgba(0, 255, 204, 0.1) 70%, 
+                transparent 100%);
+            animation: circuitFlow 6s linear infinite reverse;
+        }
+        
+        @keyframes circuitFlow {
+            0% { opacity: 0.2; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.2; }
+        }
+        
+        /* 加强响应式设计 */
+        @media (max-width: 768px) {
+            .hud-elements {
+                flex-direction: column;
+                gap: 10px;
+                font-size: 0.7em;
+            }
+            
+            .hud-left, .hud-right {
+                gap: 15px;
+            }
+            
+            .hero-title {
+                font-size: 2.2em;
+                letter-spacing: 2px;
+            }
+            
+            .corner-decoration {
+                width: 25px;
+                height: 25px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 2px solid #00ffcc;
+                margin-bottom: 20px;
+                padding: 15px;
+                z-index: 9999; /* 确保移动端sidebar也在最高层 */
+            }
+            
+            .main-content {
+                margin-left: 0;
+                max-width: 100%;
+                padding: 15px;
+                margin-top: 0;
+            }
+            
+            .container {
+                display: block;
+                min-height: calc(100vh - 150px);
+            }
+            
+            /* 移动端目录切换按钮 */
+            .sidebar-toggle {
+                display: block;
+                background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+                color: #0a0a0a;
+                border: none;
+                padding: 10px 15px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                border-radius: 6px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .sidebar-toggle:hover {
+                background: linear-gradient(90deg, #00cc99 0%, #00ffcc 100%);
+            }
+            
+            .sidebar.collapsed {
+                display: none;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar-toggle {
+                display: none;
+            }
+        }
+        
+        .container {
+            display: flex;
+            min-height: calc(100vh - 150px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: linear-gradient(180deg, #16213e 0%, #0f1419 100%);
+            border-right: 2px solid #00ffcc;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0, 255, 204, 0.1);
+            position: fixed;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            top: 200px;
+            z-index: 9999; /* 确保sidebar在最高层 */
+            border-top: 2px solid #00ffcc;
+        }
+        
+        .sidebar h2 {
+            color: #00ffcc;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.1em;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            border-bottom: 1px solid #00ffcc;
+            padding-bottom: 10px;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar li {
+            margin-bottom: 6px;
+        }
+        
+        .sidebar .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            margin: 15px 0;
+        }
+        
+        .sidebar .home-link a {
+            color: #ffaa00;
+            background: rgba(255, 170, 0, 0.1);
+            border-left: 3px solid #ffaa00;
+            font-weight: bold;
+        }
+        
+        .sidebar .home-link a:hover {
+            background: rgba(255, 170, 0, 0.2);
+            color: #ffcc44;
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.6);
+        }
+        
+        .sidebar a {
+            color: #a0a0a0;
+            text-decoration: none;
+            padding: 8px 12px;
+            display: block;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-size: 0.9em;
+        }
+        
+        .sidebar a:hover {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .sidebar .active a {
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: 300px;
+            padding: 40px;
+            max-width: calc(100% - 300px);
+            margin-top: 20px;
+            position: relative;
+            z-index: 1; /* 确保主内容在sidebar下方 */
+        }
+        
+        .page-header {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .page-header h1 {
+            color: #00ffcc;
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+        
+        .content {
+            background: rgba(22, 33, 62, 0.3);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            color: #00ffcc;
+            margin: 30px 0 15px 0;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .content h1 { font-size: 2em; }
+        .content h2 { font-size: 1.7em; }
+        .content h3 { font-size: 1.4em; }
+        .content h4 { font-size: 1.2em; color: #88ffaa; }
+        .content h5 { font-size: 1.1em; color: #88ffaa; }
+        .content h6 { font-size: 1em; color: #88ffaa; }
+        
+        .content-paragraph {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            line-height: 1.8;
+        }
+        
+        .content-list {
+            margin: 15px 0;
+            padding-left: 25px;
+            color: #d0d0d0;
+        }
+        
+        .content-list li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .content-list.numbered {
+            list-style-type: decimal;
+        }
+        
+        .inline-code {
+            background: rgba(0, 255, 204, 0.15);
+            color: #00ff88;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+        }
+        
+        .code-block-wrapper {
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #00ffcc;
+            box-shadow: 0 4px 15px rgba(0, 255, 204, 0.1);
+        }
+        
+        .code-block-header {
+            background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+            color: #0a0a0a;
+            padding: 8px 15px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-align: left;
+        }
+        
+        .code-language {
+            font-family: 'Consolas', 'Monaco', monospace;
+            letter-spacing: 1px;
+        }
+        
+        .code-block {
+            background: #0d1421;
+            margin: 0;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            color: #e0e0e0;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            border: none;
+        }
+        
+        .collapsible-section {
+            margin: 20px 0;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 8px;
+            background: rgba(22, 33, 62, 0.2);
+        }
+        
+        .collapsible-header {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2);
+            transition: background 0.3s ease;
+        }
+        
+        .collapsible-header:hover {
+            background: rgba(0, 255, 204, 0.2);
+        }
+        
+        .collapsible-content {
+            padding: 15px 20px;
+        }
+        
+        .quote-block {
+            border-left: 4px solid #00ffcc;
+            background: rgba(0, 255, 204, 0.05);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            color: #d0d0d0;
+            font-style: italic;
+        }
+        
+        .content-link {
+            color: #00ffcc;
+            text-decoration: none;
+            border-bottom: 1px dotted #00ffcc;
+            transition: all 0.3s ease;
+        }
+        
+        .content-link:hover {
+            color: #ffffff;
+            border-bottom-style: solid;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+        }
+
+        
+        .qr-section {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .qr-section img {
+            max-width: 200px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        
+        .qr-section p {
+            color: #00ffcc;
+            font-size: 1.1em;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.2em;
+            }
+            .sidebar {
+                width: 250px;
+            }
+            .main-content {
+                margin-left: 250px;
+                max-width: calc(100% - 250px);
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="hero-header">
+        <!-- 电路板线条背景 -->
+        <div class="circuit-lines"></div>
+        
+        <!-- 装饰网格层 -->
+        <div class="decorative-grid"></div>
+        
+        <!-- 故障艺术扫描层 -->
+        <div class="glitch-overlay"></div>
+        
+        <!-- 角落装饰 -->
+        <div class="corner-decoration corner-tl"></div>
+        <div class="corner-decoration corner-tr"></div>
+        <div class="corner-decoration corner-bl"></div>
+        <div class="corner-decoration corner-br"></div>
+        
+        <!-- 额外的装饰元素 -->
+        <div class="corner-decoration corner-tl2"></div>
+        <div class="corner-decoration corner-tr2"></div>
+        <div class="corner-decoration corner-bl2"></div>
+        <div class="corner-decoration corner-br2"></div>
+        
+        <div class="cyberpunk-container">
+            <!-- HUD 上部状态栏 -->
+            <div class="hud-elements">
+                <div class="hud-left">
+                    <div class="system-status">
+                        <div class="status-dot"></div>
+                        <span>SYSTEM: ONLINE</span>
+                    </div>
+                    <div class="battery-indicator">
+                        <span>PWR:</span>
+                        <div class="battery">
+                            <div class="battery-fill"></div>
+                        </div>
+                        <span>87%</span>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <div class="progress-bar">
+                        <span>DATA:</span>
+                        <div class="progress-container">
+                            <div class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="data-transfer">
+                        <span class="transfer-icon">▲▼</span>
+                        <span>SYNC</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主标题区域 -->
+            <h1 class="hero-title">🎮 Godot游戏编程模式</h1>
+            <div class="geometric-line"></div>
+            <p class="hero-subtitle">[ NEURAL LINK ESTABLISHED ]</p>
+            <p class="hero-description">
+                > ACCESSING DESIGN PATTERNS DATABASE...<br>
+                > CYBERPUNK PROGRAMMING PROTOCOLS LOADED<br>
+                > STATUS: READY FOR NEURAL DOWNLOAD
+            </p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <nav class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle">📚 教程目录</button>
+            <h2>📚 教程目录</h2>
+            <ul>
+                <li class="home-link">
+                    <a href="index.html">🏠 返回首页</a>
+                </li>
+                <li class="divider"></li><li class="">
+                    <a href="introduction.html">📖 引言</a>
+                </li>
+                <li class="">
+                    <a href="command.html">1. 命令模式 (Command)</a>
+                </li>
+                <li class="">
+                    <a href="flyweight.html">2. 享元模式 (Flyweight)</a>
+                </li>
+                <li class="">
+                    <a href="observer.html">3. 观察者模式 (Observer)</a>
+                </li>
+                <li class="">
+                    <a href="prototype.html">4. 原型 (Prototype)</a>
+                </li>
+                <li class="">
+                    <a href="game-loop.html">5. 游戏循环 (Game Loop)</a>
+                </li>
+                <li class="">
+                    <a href="update-method.html">6. 更新方法 (Update Method)</a>
+                </li>
+                <li class="">
+                    <a href="bytecode.html">7. 字节码 (Bytecode)</a>
+                </li>
+                <li class="">
+                    <a href="subclass-sandbox.html">8. 子类沙盒 (Subclass Sandbox)</a>
+                </li>
+                <li class="">
+                    <a href="type-object.html">9. 类型对象 (Type Object)</a>
+                </li>
+                <li class="active">
+                    <a href="component.html">10. 组件 (Component)</a>
+                </li>
+                <li class="">
+                    <a href="event-queue.html">11. 事件队列 (Event Queue)</a>
+                </li>
+                <li class="">
+                    <a href="service-locator.html">12. 服务定位器 (Service Locator)</a>
+                </li>
+                <li class="">
+                    <a href="data-locality.html">13. 数据局部性 (Data Locality)</a>
+                </li>
+                <li class="">
+                    <a href="dirty-flag.html">14. 脏标记 (Dirty Flag)</a>
+                </li>
+                <li class="">
+                    <a href="object-pool.html">15. 对象池 (Object Pool)</a>
+                </li>
+                <li class="">
+                    <a href="spatial-partition.html">16. 空间分区 (Spatial Partition)</a>
+                </li>
+            </ul>
+        </nav>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <h1>10. 组件 (Component)</h1>
+            </header>
+            
+            <div class="content">
+                <h3>第10章 - 组件 (Component)</h3>
+
+<h4><strong>10.1 动机</strong></h4>
+
+在传统的面向对象设计中，我们习惯于使用继承来共享代码。例如，一个游戏可能有这样的继承树：
+<ul class="content-list"><li><code class="inline-code">GameObject</code></li></ul>
+<ul class="content-list"><li><code class="inline-code">MovingObject</code> (继承自GameObject，增加了速度和方向)</li></ul>
+<ul class="content-list"><li><code class="inline-code">Player</code> (继承自MovingObject)</li></ul>
+<ul class="content-list"><li><code class="inline-code">Enemy</code> (继承自MovingObject)</li></ul>
+<ul class="content-list"><li><code class="inline-code">FlyingEnemy</code> (继承自Enemy，改变了移动逻辑)</li></ul>
+
+这种方式在项目初期看起来很清晰，但很快就会暴露其致命缺陷：<strong>僵化</strong>。如果现在我们想创建一个既能移动又能说话的NPC，但它不能被攻击，该怎么办？我们可能需要创建一个新的<code class="inline-code">TalkableMovingObject</code>类。如果一个东西既能被渲染，又能被物理引擎处理，但不能移动呢？这种组合爆炸会导致类的数量急剧增多，形成一个难以理解和维护的"死亡继承菱形"。
+
+<p class="content-paragraph">组件模式提出了一个革命性的思想：<strong>组合优于继承</strong>。它不再让一个对象"是"一个东西，而是让它"拥有"一些东西。一个游戏对象变成了一个简单的"属性容器"（通常称为实体，Entity），而它所有的功能——渲染、物理、AI、输入控制——都由独立的、可插拔的"组件"对象来提供。</p>
+
+现在，要创建一个会飞的、会说话的、有AI的敌人，我们只需要创建一个空的实体，然后给它插上<code class="inline-code">PhysicsComponent</code>、<code class="inline-code">RenderComponent</code>、<code class="inline-code">AIComponent</code>和<code class="inline-code">DialogueComponent</code>即可。
+
+<h4><strong>10.2 Godot中的实现方式：节点树 (Node Tree)</strong></h4>
+
+<strong>组件模式是Godot引擎设计的绝对核心</strong>。如果你理解了Godot的节点和场景系统，那么你已经在使用组件模式了。
+<ul class="content-list"><li><strong>实体 (Entity)</strong>: 在Godot中，任何一个<code class="inline-code">Node</code>（特别是<code class="inline-code">Node2D</code>, <code class="inline-code">Node3D</code>或<code class="inline-code">Control</code>）都可以作为一个实体容器。</li></ul>
+<ul class="content-list"><li><strong>组件 (Component)</strong>: 组件就是被添加为实体节点的 <strong>子节点</strong> 的其他节点。每个节点都专注于一项单一的功能。</li></ul>
+
+一个典型的Godot"玩家"实体，其场景树结构就完美地诠释了组件模式：
+<ul class="content-list"><li><code class="inline-code">Player</code> (<code class="inline-code">CharacterBody2D</code>): 实体根节点，负责整合所有组件。</li></ul>
+<ul class="content-list"><li><code class="inline-code">Sprite2D</code>: <strong>渲染组件</strong>，负责显示玩家的图像。</li></ul>
+<ul class="content-list"><li><code class="inline-code">CollisionShape2D</code>: <strong>物理形状组件</strong>，定义玩家的物理边界。</li></ul>
+<ul class="content-list"><li><code class="inline-code">AnimationPlayer</code>: <strong>动画组件</strong>，管理所有动画。</li></ul>
+<ul class="content-list"><li><code class="inline-code">Camera2D</code>: <strong>相机组件</strong>，让镜头跟随玩家。</li></ul>
+<ul class="content-list"><li><code class="inline-code">HealthComponent</code> (<code class="inline-code">Node</code>): 一个自定义脚本组件，负责管理生命值。</li></ul>
+<ul class="content-list"><li><code class="inline-code">InputComponent</code> (<code class="inline-code">Node</code>): 一个自定义脚本组件，负责处理玩家输入。</li></ul>
+
+<p class="content-paragraph">这种结构让我们可以通过在编辑器中添加、移除或替换子节点（组件）来轻松地组合和修改游戏对象的功能。</p>
+
+<h4><strong>10.3 实现：组合式AI敌人</strong></h4>
+
+我们将创建一个敌人，它的行为不是由一个巨大的<code class="inline-code">Enemy.cs</code>脚本定义的，而是由多个可复用的组件脚本组合而成。
+
+<p class="content-paragraph"><strong>1. 创建组件脚本</strong></p>
+
+每个组件都是一个独立的<code class="inline-code">Node</code>，并附加一个处理单一职责的脚本。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// HealthComponent.cs
+using Godot;
+
+public partial class HealthComponent : Node
+{
+    [Signal] public delegate void DiedEventHandler();
+    [Export] public int MaxHealth { get; private set; } = 100;
+    
+    private int _currentHealth;
+
+    public override void _Ready() =&gt; _currentHealth = MaxHealth;
+
+    public void TakeDamage(int amount)
+    {
+        _currentHealth = Mathf.Max(0, _currentHealth - amount);
+        if (_currentHealth == 0) EmitSignal(SignalName.Died);
+    }
+}
+
+// WanderMovementComponent.cs
+using Godot;
+
+public partial class WanderMovementComponent : Node
+{
+    [Export] private float _wanderRadius = 50.0f;
+    [Export] private float _speed = 50.0f;
+
+    private CharacterBody2D _body;
+    private Vector2 _wanderTarget;
+    private Timer _timer;
+
+    public override void _Ready()
+    {
+        _body = GetOwner&lt;CharacterBody2D&gt;();
+        _timer = new Timer { WaitTime = GD.RandRange(2.0, 5.0), OneShot = false };
+        _timer.Timeout += SetNewWanderTarget;
+        AddChild(_timer);
+        _timer.Start();
+        SetNewWanderTarget();
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        _body.Velocity = _body.GlobalPosition.DirectionTo(_wanderTarget) * _speed;
+        _body.MoveAndSlide();
+        if (_body.GlobalPosition.DistanceTo(_wanderTarget) &lt; 5.0f) SetNewWanderTarget();
+    }
+
+    private void SetNewWanderTarget()
+    {
+        _wanderTarget = _body.GlobalPosition + new Vector2((float)GD.RandRange(-1.0, 1.0), (float)GD.RandRange(-1.0, 1.0)).Normalized() * _wanderRadius;
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># HealthComponent.gd
+class_name HealthComponent
+extends Node
+
+signal died
+
+@export var max_health: int = 100
+
+var _current_health: int
+
+func _ready() -&gt; void:
+	_current_health = max_health
+
+func take_damage(amount: int) -&gt; void:
+	_current_health = max(_current_health - amount, 0)
+	if _current_health == 0:
+		died.emit()
+
+# WanderMovementComponent.gd
+class_name WanderMovementComponent
+extends Node
+
+@export var _wander_radius: float = 50.0
+@export var _speed: float = 50.0
+
+var _body: CharacterBody2D
+var _wander_target: Vector2
+var _timer: Timer
+
+func _ready() -&gt; void:
+	_body = get_owner() as CharacterBody2D
+	_timer = Timer.new()
+	_timer.wait_time = randf_range(2.0, 5.0)
+	_timer.one_shot = false
+	_timer.timeout.connect(set_new_wander_target)
+	add_child(_timer)
+	_timer.start()
+	set_new_wander_target()
+
+func _physics_process(delta: float) -&gt; void:
+	_body.velocity = _body.global_position.direction_to(_wander_target) * _speed
+	_body.move_and_slide()
+	if _body.global_position.distance_to(_wander_target) &lt; 5.0:
+		set_new_wander_target()
+
+func set_new_wander_target() -&gt; void:
+	_wander_target = _body.global_position + Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized() * _wander_radius</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>2. 组装实体</strong></p>
+
+现在，在编辑器中创建<code class="inline-code">Enemy</code>场景：
+<ul class="content-list"><li><code class="inline-code">Enemy</code> (<code class="inline-code">CharacterBody2D</code>)</li></ul>
+<ul class="content-list"><li><code class="inline-code">Sprite2D</code></li></ul>
+<ul class="content-list"><li><code class="inline-code">CollisionShape2D</code></li></ul>
+<ul class="content-list"><li><code class="inline-code">HealthComponent</code> (附加<code class="inline-code">HealthComponent.cs</code>)</li></ul>
+<ul class="content-list"><li><code class="inline-code">WanderMovementComponent</code> (附加<code class="inline-code">WanderMovementComponent.cs</code>)</li></ul>
+
+<p class="content-paragraph"><strong>3. 实体主脚本（协调器）</strong></p>
+
+<code class="inline-code">Enemy</code>节点的主脚本非常简单，它的主要职责是获取对其组件的引用，并协调它们之间的交互（通常通过信号）。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// Enemy.cs
+using Godot;
+
+public partial class Enemy : CharacterBody2D
+{
+    private HealthComponent _healthComponent;
+
+    public override void _Ready()
+    {
+        _healthComponent = GetNode&lt;HealthComponent&gt;(&quot;HealthComponent&quot;);
+        _healthComponent.Died += OnDied;
+    }
+
+    private void OnDied()
+    {
+        GD.Print(&quot;Enemy died!&quot;);
+        QueueFree();
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># Enemy.gd
+extends CharacterBody2D
+
+var _health_component: HealthComponent
+
+func _ready() -&gt; void:
+	_health_component = $HealthComponent
+	_health_component.died.connect(_on_died)
+
+func _on_died() -&gt; void:
+	print(&quot;敌人死亡!&quot;)
+	queue_free()</code></pre>
+        </div>
+            </div>
+        </details>
+
+现在，如果我们想创建一个会追逐玩家而不是四处游荡的敌人，我们不需要创建新的子类。我们只需要创建一个新的<code class="inline-code">ChaseMovementComponent.cs</code>，然后在编辑器里将<code class="inline-code">WanderMovementComponent</code>替换成<code class="inline-code">ChaseMovementComponent</code>即可。功能被完全解耦了。
+
+<h4><strong>10.4 游戏案例</strong></h4>
+<ul class="content-list"><li><strong>所有Godot游戏</strong>: Godot的整个设计哲学就是基于组件模式。</li></ul>
+<ul class="content-list"><li><strong>《塞尔达传说：旷野之息》</strong>: 游戏中的所有物体（敌人、NPC、武器、食物）都是由各种组件（物理、AI、可交互、可烹饪等）组合而成的实体，提供了极高的系统性玩法自由度。</li></ul>
+<ul class="content-list"><li><strong>Unity引擎</strong>: 和Godot类似，Unity也使用基于组件的设计。</li></ul>
+
+<h4><strong>10.5 使用建议与注意事项</strong></h4>
+<ul class="content-list"><li><strong>拥抱Godot的方式</strong>: 在Godot中，使用子节点作为组件是自然且正确的方式。不要试图在一个脚本中实现所有功能。</li></ul>
+<ul class="content-list"><li><strong>组件间通信</strong>: 组件之间应尽量保持解耦。最佳的通信方式是通过其所有者（Owner）节点发射信号。例如，<code class="inline-code">InputComponent</code>不应该直接调用<code class="inline-code">MovementComponent</code>的方法，而应该发射一个<code class="inline-code">MovementRequested</code>信号，让<code class="inline-code">Player</code>主脚本监听并决定如何响应。</li></ul>
+<ul class="content-list"><li><strong>获取组件引用</strong>: 使用<code class="inline-code">GetNode&lt;T&gt;(&quot;NodeName&quot;)</code>是标准的获取方式。为了性能，应该在<code class="inline-code">_Ready</code>方法中获取一次并将其缓存在一个成员变量中，而不是在<code class="inline-code">_Process</code>中反复获取。</li></ul>
+<ul class="content-list"><li><strong>场景 vs. 脚本组件</strong>: 你可以将一个组件保存为独立的<code class="inline-code">.tscn</code>文件，也可以只是一个附加在空<code class="inline-code">Node</code>上的<code class="inline-code">.cs</code>文件。前者更灵活，后者更轻量。</li></ul>
+
+<p class="content-paragraph">---</p>
+            </div>
+            
+            <div class="qr-section">
+                <img src="qr_code.png" alt="Buy Me A Coffee QR Code" />
+                <p>如果对你有帮助，Buy Me A Coffee～</p>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // 移动端目录切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                });
+            }
+        });
+    </script>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-gdscript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>

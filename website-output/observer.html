@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3. 观察者模式 (Observer) - Godot游戏编程模式</title>
+    <!-- Prism.js CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .hero-header {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 50%, #0f1419 100%);
+            border-bottom: 3px solid #00ffcc;
+            padding: 35px 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.3), inset 0 1px 0 rgba(0, 255, 204, 0.2);
+            border-top: 1px solid #00ffcc;
+            z-index: 998; /* 降低z-index，确保sidebar在更高层 */
+            min-height: 180px;
+        }
+        
+        /* 扫描线效果 */
+        .hero-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            animation: scanline 4s infinite;
+            z-index: 3;
+        }
+        
+        /* 数据流背景 */
+        .hero-header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 98%, rgba(0, 255, 204, 0.03) 100%),
+                linear-gradient(180deg, transparent 98%, rgba(255, 0, 255, 0.03) 100%);
+            background-size: 20px 20px;
+            animation: dataflow 20s linear infinite;
+            z-index: 1;
+        }
+        
+        /* 额外的装饰层 */
+        .hero-header .decorative-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 204, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 204, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 10s linear infinite;
+            z-index: 1;
+        }
+        
+        .hero-header .glitch-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(255, 0, 255, 0.1) 50%, 
+                transparent 70%);
+            animation: glitchScan 3s ease-in-out infinite;
+            z-index: 2;
+        }
+        
+        @keyframes scanline {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+        
+        @keyframes dataflow {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(20px, 20px); }
+        }
+        
+        @keyframes subtitleFlicker {
+            0%, 100% { opacity: 1; }
+            90% { opacity: 1; }
+            95% { opacity: 0.7; }
+            97% { opacity: 1; }
+        }
+        
+        @keyframes diamondSpin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+        
+        @keyframes descriptionGlow {
+            0% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
+        }
+        
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        @keyframes glitchScan {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        
+        @keyframes hudLineGlow {
+            0%, 100% { opacity: 0.3; box-shadow: 0 0 5px rgba(0, 255, 204, 0.5); }
+            50% { opacity: 1; box-shadow: 0 0 15px rgba(0, 255, 204, 0.8); }
+        }
+        
+        .cyberpunk-container {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .hero-title {
+            font-size: 3.5em;
+            color: #00ffcc;
+            text-shadow: 
+                0 0 10px #00ffcc,
+                0 0 20px #00ffcc,
+                0 0 40px #00ffcc,
+                0 0 60px #00ffcc,
+                0 0 80px rgba(0, 255, 204, 0.8);
+            margin-bottom: 12px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            animation: titleGlow 3s ease-in-out infinite alternate, titlePulse 2s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-title::before {
+            content: '🎮';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        
+        .hero-title::after {
+            content: '⚡';
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite reverse;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+            100% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc, 0 0 60px #00ffcc, 0 0 80px rgba(0, 255, 204, 0.8); }
+        }
+        
+        @keyframes titlePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(-50%) rotate(0deg); }
+            50% { transform: translateY(-60%) rotate(10deg); }
+        }
+        
+        .hero-subtitle {
+            font-size: 1.3em;
+            color: #ff00ff;
+            text-shadow: 0 0 15px rgba(255, 0, 255, 0.8), 0 0 25px rgba(255, 0, 255, 0.6);
+            margin-bottom: 25px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: subtitleFlicker 4s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-subtitle::before,
+        .hero-subtitle::after {
+            content: '◆';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00ffcc;
+            font-size: 0.7em;
+            animation: diamondSpin 6s linear infinite;
+        }
+        
+        .hero-subtitle::before {
+            left: -30px;
+        }
+        
+        .hero-subtitle::after {
+            right: -30px;
+            animation-direction: reverse;
+        }
+        
+        .hero-description {
+            font-size: 1.0em;
+            color: #a0a0a0;
+            max-width: 800px;
+            margin: 0 auto 25px;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+            position: relative;
+            padding: 15px;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 255, 204, 0.05);
+            animation: descriptionGlow 5s ease-in-out infinite alternate;
+        }
+        
+        .hero-description::before {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        .hero-description br::after {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        /* HUD 装饰元素 */
+        .hud-elements {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            margin: 20px auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* HUD边框装饰 */
+        .hud-elements::before,
+        .hud-elements::after {
+            content: '';
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            width: 100%;
+            left: 0;
+        }
+        
+        .hud-elements::before {
+            top: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite;
+        }
+        
+        .hud-elements::after {
+            bottom: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite reverse;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* 电量指示器 */
+        .battery-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #00ffcc;
+        }
+        
+        .battery {
+            width: 30px;
+            height: 12px;
+            border: 1px solid #00ffcc;
+            border-radius: 2px;
+            position: relative;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+        }
+        
+        .battery::after {
+            content: '';
+            position: absolute;
+            right: -3px;
+            top: 3px;
+            width: 2px;
+            height: 6px;
+            background: #00ffcc;
+            border-radius: 0 1px 1px 0;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc);
+            border-radius: 1px;
+            animation: batteryCharge 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        @keyframes batteryCharge {
+            0% { width: 70%; }
+            50% { width: 100%; }
+            100% { width: 70%; }
+        }
+        
+        /* 像素风进度条 */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff00ff;
+        }
+        
+        .progress-container {
+            width: 80px;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #ff00ff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc, #ff00ff);
+            background-size: 200% 100%;
+            animation: progressFlow 3s linear infinite;
+            width: 65%;
+            box-shadow: 0 0 8px rgba(255, 0, 255, 0.6);
+        }
+        
+        @keyframes progressFlow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* 系统状态指示 */
+        .system-status {
+            color: #00ffcc;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #00ffcc;
+            animation: statusBlink 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+        }
+        
+        @keyframes statusBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        /* 数据传输指示 */
+        .data-transfer {
+            color: #ff00ff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .transfer-icon {
+            font-size: 10px;
+            animation: dataTransfer 1s linear infinite;
+        }
+        
+        @keyframes dataTransfer {
+            0% { transform: translateX(-3px); opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { transform: translateX(3px); opacity: 0.3; }
+        }
+        
+        .geometric-line {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            margin: 8px auto;
+            width: 400px;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+            animation: geometricPulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes geometricPulse {
+            0%, 100% { opacity: 0.6; width: 400px; }
+            50% { opacity: 1; width: 500px; }
+        }
+        
+        /* 角落装饰 */
+        .corner-decoration {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #00ffcc;
+            z-index: 2;
+        }
+        
+        .corner-tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .corner-tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        /* 额外的装饰元素 - 内层 */
+        .corner-tl2 {
+            top: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+        }
+        
+        .corner-tr2 {
+            top: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-bl2 {
+            bottom: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-br2 {
+            bottom: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        /* 电路板线条效果 */
+        .circuit-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .circuit-lines::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(0, 255, 204, 0.2) 20%, 
+                rgba(255, 0, 255, 0.2) 50%, 
+                rgba(0, 255, 204, 0.2) 80%, 
+                transparent 100%);
+            animation: circuitFlow 8s linear infinite;
+        }
+        
+        .circuit-lines::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                rgba(255, 0, 255, 0.1) 30%, 
+                rgba(0, 255, 204, 0.1) 70%, 
+                transparent 100%);
+            animation: circuitFlow 6s linear infinite reverse;
+        }
+        
+        @keyframes circuitFlow {
+            0% { opacity: 0.2; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.2; }
+        }
+        
+        /* 加强响应式设计 */
+        @media (max-width: 768px) {
+            .hud-elements {
+                flex-direction: column;
+                gap: 10px;
+                font-size: 0.7em;
+            }
+            
+            .hud-left, .hud-right {
+                gap: 15px;
+            }
+            
+            .hero-title {
+                font-size: 2.2em;
+                letter-spacing: 2px;
+            }
+            
+            .corner-decoration {
+                width: 25px;
+                height: 25px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 2px solid #00ffcc;
+                margin-bottom: 20px;
+                padding: 15px;
+                z-index: 9999; /* 确保移动端sidebar也在最高层 */
+            }
+            
+            .main-content {
+                margin-left: 0;
+                max-width: 100%;
+                padding: 15px;
+                margin-top: 0;
+            }
+            
+            .container {
+                display: block;
+                min-height: calc(100vh - 150px);
+            }
+            
+            /* 移动端目录切换按钮 */
+            .sidebar-toggle {
+                display: block;
+                background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+                color: #0a0a0a;
+                border: none;
+                padding: 10px 15px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                border-radius: 6px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .sidebar-toggle:hover {
+                background: linear-gradient(90deg, #00cc99 0%, #00ffcc 100%);
+            }
+            
+            .sidebar.collapsed {
+                display: none;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar-toggle {
+                display: none;
+            }
+        }
+        
+        .container {
+            display: flex;
+            min-height: calc(100vh - 150px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: linear-gradient(180deg, #16213e 0%, #0f1419 100%);
+            border-right: 2px solid #00ffcc;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0, 255, 204, 0.1);
+            position: fixed;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            top: 200px;
+            z-index: 9999; /* 确保sidebar在最高层 */
+            border-top: 2px solid #00ffcc;
+        }
+        
+        .sidebar h2 {
+            color: #00ffcc;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.1em;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            border-bottom: 1px solid #00ffcc;
+            padding-bottom: 10px;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar li {
+            margin-bottom: 6px;
+        }
+        
+        .sidebar .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            margin: 15px 0;
+        }
+        
+        .sidebar .home-link a {
+            color: #ffaa00;
+            background: rgba(255, 170, 0, 0.1);
+            border-left: 3px solid #ffaa00;
+            font-weight: bold;
+        }
+        
+        .sidebar .home-link a:hover {
+            background: rgba(255, 170, 0, 0.2);
+            color: #ffcc44;
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.6);
+        }
+        
+        .sidebar a {
+            color: #a0a0a0;
+            text-decoration: none;
+            padding: 8px 12px;
+            display: block;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-size: 0.9em;
+        }
+        
+        .sidebar a:hover {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .sidebar .active a {
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: 300px;
+            padding: 40px;
+            max-width: calc(100% - 300px);
+            margin-top: 20px;
+            position: relative;
+            z-index: 1; /* 确保主内容在sidebar下方 */
+        }
+        
+        .page-header {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .page-header h1 {
+            color: #00ffcc;
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+        
+        .content {
+            background: rgba(22, 33, 62, 0.3);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            color: #00ffcc;
+            margin: 30px 0 15px 0;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .content h1 { font-size: 2em; }
+        .content h2 { font-size: 1.7em; }
+        .content h3 { font-size: 1.4em; }
+        .content h4 { font-size: 1.2em; color: #88ffaa; }
+        .content h5 { font-size: 1.1em; color: #88ffaa; }
+        .content h6 { font-size: 1em; color: #88ffaa; }
+        
+        .content-paragraph {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            line-height: 1.8;
+        }
+        
+        .content-list {
+            margin: 15px 0;
+            padding-left: 25px;
+            color: #d0d0d0;
+        }
+        
+        .content-list li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .content-list.numbered {
+            list-style-type: decimal;
+        }
+        
+        .inline-code {
+            background: rgba(0, 255, 204, 0.15);
+            color: #00ff88;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+        }
+        
+        .code-block-wrapper {
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #00ffcc;
+            box-shadow: 0 4px 15px rgba(0, 255, 204, 0.1);
+        }
+        
+        .code-block-header {
+            background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+            color: #0a0a0a;
+            padding: 8px 15px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-align: left;
+        }
+        
+        .code-language {
+            font-family: 'Consolas', 'Monaco', monospace;
+            letter-spacing: 1px;
+        }
+        
+        .code-block {
+            background: #0d1421;
+            margin: 0;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            color: #e0e0e0;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            border: none;
+        }
+        
+        .collapsible-section {
+            margin: 20px 0;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 8px;
+            background: rgba(22, 33, 62, 0.2);
+        }
+        
+        .collapsible-header {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2);
+            transition: background 0.3s ease;
+        }
+        
+        .collapsible-header:hover {
+            background: rgba(0, 255, 204, 0.2);
+        }
+        
+        .collapsible-content {
+            padding: 15px 20px;
+        }
+        
+        .quote-block {
+            border-left: 4px solid #00ffcc;
+            background: rgba(0, 255, 204, 0.05);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            color: #d0d0d0;
+            font-style: italic;
+        }
+        
+        .content-link {
+            color: #00ffcc;
+            text-decoration: none;
+            border-bottom: 1px dotted #00ffcc;
+            transition: all 0.3s ease;
+        }
+        
+        .content-link:hover {
+            color: #ffffff;
+            border-bottom-style: solid;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+        }
+
+        
+        .qr-section {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .qr-section img {
+            max-width: 200px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        
+        .qr-section p {
+            color: #00ffcc;
+            font-size: 1.1em;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.2em;
+            }
+            .sidebar {
+                width: 250px;
+            }
+            .main-content {
+                margin-left: 250px;
+                max-width: calc(100% - 250px);
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="hero-header">
+        <!-- 电路板线条背景 -->
+        <div class="circuit-lines"></div>
+        
+        <!-- 装饰网格层 -->
+        <div class="decorative-grid"></div>
+        
+        <!-- 故障艺术扫描层 -->
+        <div class="glitch-overlay"></div>
+        
+        <!-- 角落装饰 -->
+        <div class="corner-decoration corner-tl"></div>
+        <div class="corner-decoration corner-tr"></div>
+        <div class="corner-decoration corner-bl"></div>
+        <div class="corner-decoration corner-br"></div>
+        
+        <!-- 额外的装饰元素 -->
+        <div class="corner-decoration corner-tl2"></div>
+        <div class="corner-decoration corner-tr2"></div>
+        <div class="corner-decoration corner-bl2"></div>
+        <div class="corner-decoration corner-br2"></div>
+        
+        <div class="cyberpunk-container">
+            <!-- HUD 上部状态栏 -->
+            <div class="hud-elements">
+                <div class="hud-left">
+                    <div class="system-status">
+                        <div class="status-dot"></div>
+                        <span>SYSTEM: ONLINE</span>
+                    </div>
+                    <div class="battery-indicator">
+                        <span>PWR:</span>
+                        <div class="battery">
+                            <div class="battery-fill"></div>
+                        </div>
+                        <span>87%</span>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <div class="progress-bar">
+                        <span>DATA:</span>
+                        <div class="progress-container">
+                            <div class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="data-transfer">
+                        <span class="transfer-icon">▲▼</span>
+                        <span>SYNC</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主标题区域 -->
+            <h1 class="hero-title">🎮 Godot游戏编程模式</h1>
+            <div class="geometric-line"></div>
+            <p class="hero-subtitle">[ NEURAL LINK ESTABLISHED ]</p>
+            <p class="hero-description">
+                > ACCESSING DESIGN PATTERNS DATABASE...<br>
+                > CYBERPUNK PROGRAMMING PROTOCOLS LOADED<br>
+                > STATUS: READY FOR NEURAL DOWNLOAD
+            </p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <nav class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle">📚 教程目录</button>
+            <h2>📚 教程目录</h2>
+            <ul>
+                <li class="home-link">
+                    <a href="index.html">🏠 返回首页</a>
+                </li>
+                <li class="divider"></li><li class="">
+                    <a href="introduction.html">📖 引言</a>
+                </li>
+                <li class="">
+                    <a href="command.html">1. 命令模式 (Command)</a>
+                </li>
+                <li class="">
+                    <a href="flyweight.html">2. 享元模式 (Flyweight)</a>
+                </li>
+                <li class="active">
+                    <a href="observer.html">3. 观察者模式 (Observer)</a>
+                </li>
+                <li class="">
+                    <a href="prototype.html">4. 原型 (Prototype)</a>
+                </li>
+                <li class="">
+                    <a href="game-loop.html">5. 游戏循环 (Game Loop)</a>
+                </li>
+                <li class="">
+                    <a href="update-method.html">6. 更新方法 (Update Method)</a>
+                </li>
+                <li class="">
+                    <a href="bytecode.html">7. 字节码 (Bytecode)</a>
+                </li>
+                <li class="">
+                    <a href="subclass-sandbox.html">8. 子类沙盒 (Subclass Sandbox)</a>
+                </li>
+                <li class="">
+                    <a href="type-object.html">9. 类型对象 (Type Object)</a>
+                </li>
+                <li class="">
+                    <a href="component.html">10. 组件 (Component)</a>
+                </li>
+                <li class="">
+                    <a href="event-queue.html">11. 事件队列 (Event Queue)</a>
+                </li>
+                <li class="">
+                    <a href="service-locator.html">12. 服务定位器 (Service Locator)</a>
+                </li>
+                <li class="">
+                    <a href="data-locality.html">13. 数据局部性 (Data Locality)</a>
+                </li>
+                <li class="">
+                    <a href="dirty-flag.html">14. 脏标记 (Dirty Flag)</a>
+                </li>
+                <li class="">
+                    <a href="object-pool.html">15. 对象池 (Object Pool)</a>
+                </li>
+                <li class="">
+                    <a href="spatial-partition.html">16. 空间分区 (Spatial Partition)</a>
+                </li>
+            </ul>
+        </nav>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <h1>3. 观察者模式 (Observer)</h1>
+            </header>
+            
+            <div class="content">
+                <h3>第3章 - 观察者模式 (Observer)</h3>
+
+<h4><strong>3.1 动机</strong></h4>
+
+<p class="content-paragraph">在游戏中，不同系统之间需要频繁地进行通信。例如：<br><ul class="content-list"><li>当玩家的生命值降低时，UI上的血条需要更新。</li></ul><br><ul class="content-list"><li>当一个敌人被消灭时，分数管理器需要增加分数，音效管理器需要播放爆炸声。</li></ul><br><ul class="content-list"><li>当玩家完成一个任务时，任务日志UI需要更新，同时可能会触发一个新的过场动画。</li></ul></p>
+
+最糟糕的实现方式是让这些系统直接相互引用和调用。比如，让玩家角色 <code class="inline-code">Player</code> 持有对 <code class="inline-code">UI</code>、<code class="inline-code">ScoreManager</code>、<code class="inline-code">AudioManager</code> 的直接引用：
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本（反模式）</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// 反模式：紧耦合
+public partial class Player : CharacterBody2D
+{
+    private UIManager _ui; // 强引用
+    private ScoreManager _scoreManager; // 强引用
+    
+    public void TakeDamage(int amount)
+    {
+        _health -= amount;
+        _ui.UpdateHealthBar(_health); // 直接调用
+    }
+    
+    public void Die()
+    {
+        _scoreManager.AddScoreOnEnemyDeath(this); // 直接调用
+        // ...
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本（反模式）</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># 反模式：紧耦合
+class_name Player
+extends CharacterBody2D
+
+var _ui: UIManager # 强引用
+var _score_manager: ScoreManager # 强引用
+
+func take_damage(amount: int) -&gt; void:
+	_health -= amount
+	_ui.update_health_bar(_health) # 直接调用
+
+func die() -&gt; void:
+	_score_manager.add_score_on_enemy_death(self) # 直接调用
+	# ...</code></pre>
+        </div>
+            </div>
+        </details>
+
+这种方式会导致"意大利面条式代码"，系统之间高度耦合，难以维护和扩展。如果想添加一个新的系统来响应玩家死亡（比如一个成就系统），就必须修改<code class="inline-code">Player</code>类的代码。这违反了"开闭原则"。
+
+<p class="content-paragraph">观察者模式提供了一个完美的解决方案：定义一个"主题"（Subject）或"被观察者"，它维护一个"观察者"（Observer）列表。当主题的状态发生改变时，它会遍历并通知所有观察者，而无需知道观察者的具体身份或它们将如何响应。</p>
+
+<h4><strong>3.2 Godot中的实现方式：信号 (Signals)</strong></h4>
+
+Godot将观察者模式提升为引擎的一等公民，其实现就是 <strong>信号（Signals）</strong>。在Godot中：
+<ul class="content-list"><li><strong>主题 (Subject)</strong>: 任何 <code class="inline-code">GodotObject</code>（包括所有<code class="inline-code">Node</code>）都可以定义和发射信号。</li></ul>
+<ul class="content-list"><li><strong>观察者 (Observer)</strong>: 任何 <code class="inline-code">GodotObject</code> 都可以监听（连接到）这些信号，并通过一个回调方法来响应。</li></ul>
+
+<p class="content-paragraph">信号系统是完全由引擎核心管理的，它高效、安全，并且是Godot推荐的解耦通信方式。使用C#时，信号被优雅地映射为C#的 <strong>事件（events）</strong>。</p>
+
+<h4><strong>3.3 实现：玩家状态通知</strong></h4>
+
+我们将创建一个<code class="inline-code">Player</code>，当其生命值改变或死亡时，会发射信号。然后一个<code class="inline-code">UIManager</code>会监听这些信号来更新界面。
+
+<p class="content-paragraph"><strong>1. 在主题中定义信号</strong></p>
+
+在<code class="inline-code">Player.cs</code>中，我们使用<code class="inline-code">[Signal]</code>特性和<code class="inline-code">delegate</code>来定义信号。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// Player.cs
+using Godot;
+
+public partial class Player : CharacterBody2D
+{
+    // 1. 定义信号
+    // 当生命值改变时发射，传递旧值和新值
+    [Signal]
+    public delegate void HealthChangedEventHandler(int oldHealth, int newHealth);
+    
+    // 当玩家死亡时发射
+    [Signal]
+    public delegate void DiedEventHandler();
+
+    private int _health = 100;
+    public int Health
+    {
+        get =&gt; _health;
+        set
+        {
+            int oldHealth = _health;
+            _health = Mathf.Max(0, value);
+            
+            // 2. 发射信号
+            EmitSignal(SignalName.HealthChanged, oldHealth, _health);
+            
+            if (_health == 0)
+            {
+                EmitSignal(SignalName.Died);
+            }
+        }
+    }
+
+    public override void _Input(InputEvent @event)
+    {
+        // 测试：按空格键扣血
+        if (@event.IsActionPressed(&quot;ui_accept&quot;))
+        {
+            TakeDamage(10);
+        }
+    }
+
+    public void TakeDamage(int amount)
+    {
+        Health -= amount;
+        GD.Print(__CODEBLOCK_2__quot;Player took {amount} damage. Current health: {Health}&quot;);
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># Player.gd
+class_name Player
+extends CharacterBody2D
+
+# 1. 定义信号
+# 当生命值改变时发射，传递旧值和新值
+signal health_changed(old_health: int, new_health: int)
+
+# 当玩家死亡时发射
+signal died
+
+var _health: int = 100
+
+var health: int:
+	get:
+		return _health
+	set(value):
+		var old_health = _health
+		_health = max(0, value)
+		
+		# 2. 发射信号
+		health_changed.emit(old_health, _health)
+		
+		if _health == 0:
+			died.emit()
+
+func _input(event: InputEvent) -&gt; void:
+	# 测试：按空格键扣血
+	if event.is_action_pressed(&quot;ui_accept&quot;):
+		take_damage(10)
+
+func take_damage(amount: int) -&gt; void:
+	health -= amount
+	print(&quot;玩家受到 &quot;, amount, &quot; 点伤害。当前生命值: &quot;, health)</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>2. 在观察者中连接并响应信号</strong></p>
+
+<code class="inline-code">UIManager</code>作为观察者，它不需要知道<code class="inline-code">Player</code>的内部实现，只需要连接到它感兴趣的信号即可。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// UIManager.cs
+using Godot;
+
+public partial class UIManager : CanvasLayer
+{
+    private Label _healthLabel;
+    private Player _player;
+
+    public override void _Ready()
+    {
+        _healthLabel = GetNode&lt;Label&gt;(&quot;HealthLabel&quot;);
+        // 假设Player节点在场景树中的路径是 /root/Main/Player
+        _player = GetNode&lt;Player&gt;(&quot;/root/Main/Player&quot;);
+
+        // 3. 连接信号到回调方法
+        // 使用 += 操作符，就像连接标准的C#事件一样
+        _player.HealthChanged += OnPlayerHealthChanged;
+        _player.Died += OnPlayerDied;
+        
+        // 初始化UI
+        OnPlayerHealthChanged(100, _player.Health);
+    }
+
+    // 4. 实现回调方法（信号处理器）
+    private void OnPlayerHealthChanged(int oldHealth, int newHealth)
+    {
+        _healthLabel.Text = __CODEBLOCK_4__quot;Health: {newHealth}&quot;;
+        GD.Print(__CODEBLOCK_4__quot;UI Updated: Health is now {newHealth}&quot;);
+    }
+
+    private void OnPlayerDied()
+    {
+        _healthLabel.Text = &quot;GAME OVER&quot;;
+        GD.Print(&quot;UI Updated: Game Over message displayed.&quot;);
+        // 在这里可以显示一个游戏结束画面
+    }
+
+    // 最佳实践：在节点退出场景树时断开连接，防止内存泄漏
+    public override void _ExitTree()
+    {
+        _player.HealthChanged -= OnPlayerHealthChanged;
+        _player.Died -= OnPlayerDied;
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># UIManager.gd
+class_name UIManager
+extends CanvasLayer
+
+@onready var _health_label: Label = $HealthLabel
+var _player: Player
+
+func _ready() -&gt; void:
+	# 假设Player节点在场景树中的路径是 /root/Main/Player
+	_player = get_node(&quot;/root/Main/Player&quot;)
+	
+	# 3. 连接信号到回调方法
+	_player.health_changed.connect(_on_player_health_changed)
+	_player.died.connect(_on_player_died)
+	
+	# 初始化UI
+	_on_player_health_changed(100, _player.health)
+
+# 4. 实现回调方法（信号处理器）
+func _on_player_health_changed(old_health: int, new_health: int) -&gt; void:
+	_health_label.text = &quot;生命值: &quot; + str(new_health)
+	print(&quot;UI更新：生命值现在是 &quot;, new_health)
+
+func _on_player_died() -&gt; void:
+	_health_label.text = &quot;游戏结束&quot;
+	print(&quot;UI更新：显示游戏结束消息&quot;)
+	# 在这里可以显示一个游戏结束画面
+
+# 最佳实践：在节点退出场景树时断开连接，防止内存泄漏
+func _exit_tree() -&gt; void:
+	if _player:
+		_player.health_changed.disconnect(_on_player_health_changed)
+		_player.died.disconnect(_on_player_died)</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>3. 全局事件总线 (Event Bus)</strong></p>
+
+对于需要全局广播的事件（例如 <code class="inline-code">GameOver</code>, <code class="inline-code">LevelCompleted</code>），直接让各个节点去引用某个特定的<code class="inline-code">Player</code>或<code class="inline-code">LevelManager</code>仍然会造成一定程度的耦合。一种更高级的模式是创建一个全局的"事件总线"。这通常通过 <strong>单例模式（Autoload）</strong> 实现。
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// EventBus.cs (在Godot中设置为Autoload)
+using Godot;
+
+public partial class EventBus : Node
+{
+    [Signal]
+    public delegate void PlayerScoreChangedEventHandler(int newScore);
+    
+    [Signal]
+    public delegate void GamePausedEventHandler(bool isPaused);
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># EventBus.gd (在Godot中设置为Autoload)
+extends Node
+
+signal player_score_changed(new_score: int)
+signal game_paused(is_paused: bool)</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph">现在，任何节点都可以发射或监听这些全局事件，而无需知道事件的来源。</p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// 在任何节点中发射信号
+// EventBus.EmitSignal(EventBus.SignalName.PlayerScoreChanged, newScore);
+
+// 在任何节点中监听信号
+// EventBus.PlayerScoreChanged += (newScore) =&gt; { 
+//     GD.Print(__CODEBLOCK_8__quot;Global score updated: {newScore}&quot;);
+// };</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># 在任何节点中发射信号
+# EventBus.player_score_changed.emit(new_score)
+
+# 在任何节点中监听信号
+# EventBus.player_score_changed.connect(_on_score_changed)
+# func _on_score_changed(new_score: int) -&gt; void:
+#     print(&quot;全局分数更新: &quot;, new_score)</code></pre>
+        </div>
+            </div>
+        </details>
+
+<h4><strong>3.4 游戏案例</strong></h4>
+<ul class="content-list"><li><strong>成就系统</strong>: 一个全局的 <code class="inline-code">AchievementSystem</code> 可以监听来自不同来源的信号，如<code class="inline-code">EnemyDefeated</code> (来自敌人), <code class="inline-code">ItemCrafted</code> (来自制造系统), <code class="inline-code">LevelCompleted</code> (来自关卡管理器)，从而实现完全解耦的成就触发。</li></ul>
+<ul class="content-list"><li><strong>音频系统</strong>: <code class="inline-code">AudioManager</code> 可以监听 <code class="inline-code">PlayerShot</code>、<code class="inline-code">ExplosionOccurred</code>、<code class="inline-code">FootstepTaken</code> 等信号来播放相应的音效，而不需要被游戏逻辑代码直接调用。</li></ul>
+<ul class="content-list"><li><strong>UI系统</strong>: 几乎所有UI元素都通过观察者模式工作。血条、弹药计数、任务列表、小地图等都会监听游戏世界中相应数据的变化信号。</li></ul>
+
+<h4><strong>3.5 使用建议与注意事项</strong></h4>
+<ul class="content-list"><li><strong>信号 vs. 直接调用</strong>: 如果两个对象天然就是紧密耦合的（例如，一个 <code class="inline-code">Player</code> 和它的 <code class="inline-code">AnimationPlayer</code>），直接调用通常更简单、性能也更好。信号主要用于解耦不同逻辑域的对象。</li></ul>
+<ul class="content-list"><li><strong>参数传递</strong>: 信号可以传递参数。精心设计信号的参数，可以为观察者提供足够的上下文信息。</li></ul>
+<ul class="content-list"><li><strong>避免信号地狱</strong>: 过度使用信号，或者创建很长的信号链（A发射信号给B，B再发射信号给C...），会使代码的逻辑流程变得难以追踪和调试。对于复杂的交互，可以考虑其他模式，如状态模式或更集中的管理器。</li></ul>
+<ul class="content-list"><li><strong>C#事件与Godot信号</strong>: 当使用C#时，Godot信号和C#原生事件在语法上非常相似。关键区别在于Godot信号是引擎驱动的，能够跨语言（GDScript/C#）工作，并且可以在Godot编辑器中进行可视化连接。</li></ul>
+
+<p class="content-paragraph">---</p>
+            </div>
+            
+            <div class="qr-section">
+                <img src="qr_code.png" alt="Buy Me A Coffee QR Code" />
+                <p>如果对你有帮助，Buy Me A Coffee～</p>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // 移动端目录切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                });
+            }
+        });
+    </script>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-gdscript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>

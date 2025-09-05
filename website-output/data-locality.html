@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>13. 数据局部性 (Data Locality) - Godot游戏编程模式</title>
+    <!-- Prism.js CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .hero-header {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 50%, #0f1419 100%);
+            border-bottom: 3px solid #00ffcc;
+            padding: 35px 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.3), inset 0 1px 0 rgba(0, 255, 204, 0.2);
+            border-top: 1px solid #00ffcc;
+            z-index: 998; /* 降低z-index，确保sidebar在更高层 */
+            min-height: 180px;
+        }
+        
+        /* 扫描线效果 */
+        .hero-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            animation: scanline 4s infinite;
+            z-index: 3;
+        }
+        
+        /* 数据流背景 */
+        .hero-header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 98%, rgba(0, 255, 204, 0.03) 100%),
+                linear-gradient(180deg, transparent 98%, rgba(255, 0, 255, 0.03) 100%);
+            background-size: 20px 20px;
+            animation: dataflow 20s linear infinite;
+            z-index: 1;
+        }
+        
+        /* 额外的装饰层 */
+        .hero-header .decorative-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 204, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 204, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 10s linear infinite;
+            z-index: 1;
+        }
+        
+        .hero-header .glitch-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(255, 0, 255, 0.1) 50%, 
+                transparent 70%);
+            animation: glitchScan 3s ease-in-out infinite;
+            z-index: 2;
+        }
+        
+        @keyframes scanline {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+        
+        @keyframes dataflow {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(20px, 20px); }
+        }
+        
+        @keyframes subtitleFlicker {
+            0%, 100% { opacity: 1; }
+            90% { opacity: 1; }
+            95% { opacity: 0.7; }
+            97% { opacity: 1; }
+        }
+        
+        @keyframes diamondSpin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+        
+        @keyframes descriptionGlow {
+            0% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
+        }
+        
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        @keyframes glitchScan {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        
+        @keyframes hudLineGlow {
+            0%, 100% { opacity: 0.3; box-shadow: 0 0 5px rgba(0, 255, 204, 0.5); }
+            50% { opacity: 1; box-shadow: 0 0 15px rgba(0, 255, 204, 0.8); }
+        }
+        
+        .cyberpunk-container {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .hero-title {
+            font-size: 3.5em;
+            color: #00ffcc;
+            text-shadow: 
+                0 0 10px #00ffcc,
+                0 0 20px #00ffcc,
+                0 0 40px #00ffcc,
+                0 0 60px #00ffcc,
+                0 0 80px rgba(0, 255, 204, 0.8);
+            margin-bottom: 12px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            animation: titleGlow 3s ease-in-out infinite alternate, titlePulse 2s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-title::before {
+            content: '🎮';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        
+        .hero-title::after {
+            content: '⚡';
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite reverse;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+            100% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc, 0 0 60px #00ffcc, 0 0 80px rgba(0, 255, 204, 0.8); }
+        }
+        
+        @keyframes titlePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(-50%) rotate(0deg); }
+            50% { transform: translateY(-60%) rotate(10deg); }
+        }
+        
+        .hero-subtitle {
+            font-size: 1.3em;
+            color: #ff00ff;
+            text-shadow: 0 0 15px rgba(255, 0, 255, 0.8), 0 0 25px rgba(255, 0, 255, 0.6);
+            margin-bottom: 25px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: subtitleFlicker 4s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-subtitle::before,
+        .hero-subtitle::after {
+            content: '◆';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00ffcc;
+            font-size: 0.7em;
+            animation: diamondSpin 6s linear infinite;
+        }
+        
+        .hero-subtitle::before {
+            left: -30px;
+        }
+        
+        .hero-subtitle::after {
+            right: -30px;
+            animation-direction: reverse;
+        }
+        
+        .hero-description {
+            font-size: 1.0em;
+            color: #a0a0a0;
+            max-width: 800px;
+            margin: 0 auto 25px;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+            position: relative;
+            padding: 15px;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 255, 204, 0.05);
+            animation: descriptionGlow 5s ease-in-out infinite alternate;
+        }
+        
+        .hero-description::before {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        .hero-description br::after {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        /* HUD 装饰元素 */
+        .hud-elements {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            margin: 20px auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* HUD边框装饰 */
+        .hud-elements::before,
+        .hud-elements::after {
+            content: '';
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            width: 100%;
+            left: 0;
+        }
+        
+        .hud-elements::before {
+            top: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite;
+        }
+        
+        .hud-elements::after {
+            bottom: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite reverse;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* 电量指示器 */
+        .battery-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #00ffcc;
+        }
+        
+        .battery {
+            width: 30px;
+            height: 12px;
+            border: 1px solid #00ffcc;
+            border-radius: 2px;
+            position: relative;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+        }
+        
+        .battery::after {
+            content: '';
+            position: absolute;
+            right: -3px;
+            top: 3px;
+            width: 2px;
+            height: 6px;
+            background: #00ffcc;
+            border-radius: 0 1px 1px 0;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc);
+            border-radius: 1px;
+            animation: batteryCharge 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        @keyframes batteryCharge {
+            0% { width: 70%; }
+            50% { width: 100%; }
+            100% { width: 70%; }
+        }
+        
+        /* 像素风进度条 */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff00ff;
+        }
+        
+        .progress-container {
+            width: 80px;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #ff00ff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc, #ff00ff);
+            background-size: 200% 100%;
+            animation: progressFlow 3s linear infinite;
+            width: 65%;
+            box-shadow: 0 0 8px rgba(255, 0, 255, 0.6);
+        }
+        
+        @keyframes progressFlow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* 系统状态指示 */
+        .system-status {
+            color: #00ffcc;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #00ffcc;
+            animation: statusBlink 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+        }
+        
+        @keyframes statusBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        /* 数据传输指示 */
+        .data-transfer {
+            color: #ff00ff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .transfer-icon {
+            font-size: 10px;
+            animation: dataTransfer 1s linear infinite;
+        }
+        
+        @keyframes dataTransfer {
+            0% { transform: translateX(-3px); opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { transform: translateX(3px); opacity: 0.3; }
+        }
+        
+        .geometric-line {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            margin: 8px auto;
+            width: 400px;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+            animation: geometricPulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes geometricPulse {
+            0%, 100% { opacity: 0.6; width: 400px; }
+            50% { opacity: 1; width: 500px; }
+        }
+        
+        /* 角落装饰 */
+        .corner-decoration {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #00ffcc;
+            z-index: 2;
+        }
+        
+        .corner-tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .corner-tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        /* 额外的装饰元素 - 内层 */
+        .corner-tl2 {
+            top: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+        }
+        
+        .corner-tr2 {
+            top: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-bl2 {
+            bottom: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-br2 {
+            bottom: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        /* 电路板线条效果 */
+        .circuit-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .circuit-lines::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(0, 255, 204, 0.2) 20%, 
+                rgba(255, 0, 255, 0.2) 50%, 
+                rgba(0, 255, 204, 0.2) 80%, 
+                transparent 100%);
+            animation: circuitFlow 8s linear infinite;
+        }
+        
+        .circuit-lines::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                rgba(255, 0, 255, 0.1) 30%, 
+                rgba(0, 255, 204, 0.1) 70%, 
+                transparent 100%);
+            animation: circuitFlow 6s linear infinite reverse;
+        }
+        
+        @keyframes circuitFlow {
+            0% { opacity: 0.2; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.2; }
+        }
+        
+        /* 加强响应式设计 */
+        @media (max-width: 768px) {
+            .hud-elements {
+                flex-direction: column;
+                gap: 10px;
+                font-size: 0.7em;
+            }
+            
+            .hud-left, .hud-right {
+                gap: 15px;
+            }
+            
+            .hero-title {
+                font-size: 2.2em;
+                letter-spacing: 2px;
+            }
+            
+            .corner-decoration {
+                width: 25px;
+                height: 25px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 2px solid #00ffcc;
+                margin-bottom: 20px;
+                padding: 15px;
+                z-index: 9999; /* 确保移动端sidebar也在最高层 */
+            }
+            
+            .main-content {
+                margin-left: 0;
+                max-width: 100%;
+                padding: 15px;
+                margin-top: 0;
+            }
+            
+            .container {
+                display: block;
+                min-height: calc(100vh - 150px);
+            }
+            
+            /* 移动端目录切换按钮 */
+            .sidebar-toggle {
+                display: block;
+                background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+                color: #0a0a0a;
+                border: none;
+                padding: 10px 15px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                border-radius: 6px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .sidebar-toggle:hover {
+                background: linear-gradient(90deg, #00cc99 0%, #00ffcc 100%);
+            }
+            
+            .sidebar.collapsed {
+                display: none;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar-toggle {
+                display: none;
+            }
+        }
+        
+        .container {
+            display: flex;
+            min-height: calc(100vh - 150px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: linear-gradient(180deg, #16213e 0%, #0f1419 100%);
+            border-right: 2px solid #00ffcc;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0, 255, 204, 0.1);
+            position: fixed;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            top: 200px;
+            z-index: 9999; /* 确保sidebar在最高层 */
+            border-top: 2px solid #00ffcc;
+        }
+        
+        .sidebar h2 {
+            color: #00ffcc;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.1em;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            border-bottom: 1px solid #00ffcc;
+            padding-bottom: 10px;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar li {
+            margin-bottom: 6px;
+        }
+        
+        .sidebar .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            margin: 15px 0;
+        }
+        
+        .sidebar .home-link a {
+            color: #ffaa00;
+            background: rgba(255, 170, 0, 0.1);
+            border-left: 3px solid #ffaa00;
+            font-weight: bold;
+        }
+        
+        .sidebar .home-link a:hover {
+            background: rgba(255, 170, 0, 0.2);
+            color: #ffcc44;
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.6);
+        }
+        
+        .sidebar a {
+            color: #a0a0a0;
+            text-decoration: none;
+            padding: 8px 12px;
+            display: block;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-size: 0.9em;
+        }
+        
+        .sidebar a:hover {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .sidebar .active a {
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: 300px;
+            padding: 40px;
+            max-width: calc(100% - 300px);
+            margin-top: 20px;
+            position: relative;
+            z-index: 1; /* 确保主内容在sidebar下方 */
+        }
+        
+        .page-header {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .page-header h1 {
+            color: #00ffcc;
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+        
+        .content {
+            background: rgba(22, 33, 62, 0.3);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            color: #00ffcc;
+            margin: 30px 0 15px 0;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .content h1 { font-size: 2em; }
+        .content h2 { font-size: 1.7em; }
+        .content h3 { font-size: 1.4em; }
+        .content h4 { font-size: 1.2em; color: #88ffaa; }
+        .content h5 { font-size: 1.1em; color: #88ffaa; }
+        .content h6 { font-size: 1em; color: #88ffaa; }
+        
+        .content-paragraph {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            line-height: 1.8;
+        }
+        
+        .content-list {
+            margin: 15px 0;
+            padding-left: 25px;
+            color: #d0d0d0;
+        }
+        
+        .content-list li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .content-list.numbered {
+            list-style-type: decimal;
+        }
+        
+        .inline-code {
+            background: rgba(0, 255, 204, 0.15);
+            color: #00ff88;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+        }
+        
+        .code-block-wrapper {
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #00ffcc;
+            box-shadow: 0 4px 15px rgba(0, 255, 204, 0.1);
+        }
+        
+        .code-block-header {
+            background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+            color: #0a0a0a;
+            padding: 8px 15px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-align: left;
+        }
+        
+        .code-language {
+            font-family: 'Consolas', 'Monaco', monospace;
+            letter-spacing: 1px;
+        }
+        
+        .code-block {
+            background: #0d1421;
+            margin: 0;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            color: #e0e0e0;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            border: none;
+        }
+        
+        .collapsible-section {
+            margin: 20px 0;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 8px;
+            background: rgba(22, 33, 62, 0.2);
+        }
+        
+        .collapsible-header {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2);
+            transition: background 0.3s ease;
+        }
+        
+        .collapsible-header:hover {
+            background: rgba(0, 255, 204, 0.2);
+        }
+        
+        .collapsible-content {
+            padding: 15px 20px;
+        }
+        
+        .quote-block {
+            border-left: 4px solid #00ffcc;
+            background: rgba(0, 255, 204, 0.05);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            color: #d0d0d0;
+            font-style: italic;
+        }
+        
+        .content-link {
+            color: #00ffcc;
+            text-decoration: none;
+            border-bottom: 1px dotted #00ffcc;
+            transition: all 0.3s ease;
+        }
+        
+        .content-link:hover {
+            color: #ffffff;
+            border-bottom-style: solid;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+        }
+
+        
+        .qr-section {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .qr-section img {
+            max-width: 200px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        
+        .qr-section p {
+            color: #00ffcc;
+            font-size: 1.1em;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.2em;
+            }
+            .sidebar {
+                width: 250px;
+            }
+            .main-content {
+                margin-left: 250px;
+                max-width: calc(100% - 250px);
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="hero-header">
+        <!-- 电路板线条背景 -->
+        <div class="circuit-lines"></div>
+        
+        <!-- 装饰网格层 -->
+        <div class="decorative-grid"></div>
+        
+        <!-- 故障艺术扫描层 -->
+        <div class="glitch-overlay"></div>
+        
+        <!-- 角落装饰 -->
+        <div class="corner-decoration corner-tl"></div>
+        <div class="corner-decoration corner-tr"></div>
+        <div class="corner-decoration corner-bl"></div>
+        <div class="corner-decoration corner-br"></div>
+        
+        <!-- 额外的装饰元素 -->
+        <div class="corner-decoration corner-tl2"></div>
+        <div class="corner-decoration corner-tr2"></div>
+        <div class="corner-decoration corner-bl2"></div>
+        <div class="corner-decoration corner-br2"></div>
+        
+        <div class="cyberpunk-container">
+            <!-- HUD 上部状态栏 -->
+            <div class="hud-elements">
+                <div class="hud-left">
+                    <div class="system-status">
+                        <div class="status-dot"></div>
+                        <span>SYSTEM: ONLINE</span>
+                    </div>
+                    <div class="battery-indicator">
+                        <span>PWR:</span>
+                        <div class="battery">
+                            <div class="battery-fill"></div>
+                        </div>
+                        <span>87%</span>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <div class="progress-bar">
+                        <span>DATA:</span>
+                        <div class="progress-container">
+                            <div class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="data-transfer">
+                        <span class="transfer-icon">▲▼</span>
+                        <span>SYNC</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主标题区域 -->
+            <h1 class="hero-title">🎮 Godot游戏编程模式</h1>
+            <div class="geometric-line"></div>
+            <p class="hero-subtitle">[ NEURAL LINK ESTABLISHED ]</p>
+            <p class="hero-description">
+                > ACCESSING DESIGN PATTERNS DATABASE...<br>
+                > CYBERPUNK PROGRAMMING PROTOCOLS LOADED<br>
+                > STATUS: READY FOR NEURAL DOWNLOAD
+            </p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <nav class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle">📚 教程目录</button>
+            <h2>📚 教程目录</h2>
+            <ul>
+                <li class="home-link">
+                    <a href="index.html">🏠 返回首页</a>
+                </li>
+                <li class="divider"></li><li class="">
+                    <a href="introduction.html">📖 引言</a>
+                </li>
+                <li class="">
+                    <a href="command.html">1. 命令模式 (Command)</a>
+                </li>
+                <li class="">
+                    <a href="flyweight.html">2. 享元模式 (Flyweight)</a>
+                </li>
+                <li class="">
+                    <a href="observer.html">3. 观察者模式 (Observer)</a>
+                </li>
+                <li class="">
+                    <a href="prototype.html">4. 原型 (Prototype)</a>
+                </li>
+                <li class="">
+                    <a href="game-loop.html">5. 游戏循环 (Game Loop)</a>
+                </li>
+                <li class="">
+                    <a href="update-method.html">6. 更新方法 (Update Method)</a>
+                </li>
+                <li class="">
+                    <a href="bytecode.html">7. 字节码 (Bytecode)</a>
+                </li>
+                <li class="">
+                    <a href="subclass-sandbox.html">8. 子类沙盒 (Subclass Sandbox)</a>
+                </li>
+                <li class="">
+                    <a href="type-object.html">9. 类型对象 (Type Object)</a>
+                </li>
+                <li class="">
+                    <a href="component.html">10. 组件 (Component)</a>
+                </li>
+                <li class="">
+                    <a href="event-queue.html">11. 事件队列 (Event Queue)</a>
+                </li>
+                <li class="">
+                    <a href="service-locator.html">12. 服务定位器 (Service Locator)</a>
+                </li>
+                <li class="active">
+                    <a href="data-locality.html">13. 数据局部性 (Data Locality)</a>
+                </li>
+                <li class="">
+                    <a href="dirty-flag.html">14. 脏标记 (Dirty Flag)</a>
+                </li>
+                <li class="">
+                    <a href="object-pool.html">15. 对象池 (Object Pool)</a>
+                </li>
+                <li class="">
+                    <a href="spatial-partition.html">16. 空间分区 (Spatial Partition)</a>
+                </li>
+            </ul>
+        </nav>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <h1>13. 数据局部性 (Data Locality)</h1>
+            </header>
+            
+            <div class="content">
+                <h3>第13章 - 数据局部性 (Data Locality)</h3>
+
+<h4><strong>13.1 动机</strong></h4>
+
+<p class="content-paragraph">现代CPU的计算速度快得惊人，但它们的速度远远超过了从主内存（RAM）中获取数据的速度。为了弥补这个鸿沟，CPU内置了多级高速缓存（L1, L2, L3 Cache）。当CPU需要一个数据时，它会首先查看缓存。如果数据在缓存中（称为"缓存命中"，Cache Hit），获取速度极快。如果不在（称为"缓存未命中"，Cache Miss），CPU就不得不去访问慢速的RAM，并在这个过程中产生数百个时钟周期的等待，这极大地浪费了CPU的计算能力。</p>
+
+<p class="content-paragraph">CPU在从RAM加载数据时，并不会只加载所需的那一个字节，而是会加载一个连续的数据块（称为"缓存行"，Cache Line，通常是64字节）。<strong>数据局部性</strong>模式的核心思想就是：<strong>组织你的数据，以便当CPU处理一个数据时，它接下来要处理的数据已经顺便被加载到缓存中了。</strong></p>
+
+<p class="content-paragraph">这意味着，处理一个紧密排列的数组，远比处理一个元素分散在内存各处的链表要快得多。这引出了"数据驱动设计"（Data-Oriented Design）的核心原则：<strong>代码的结构应该跟随数据的结构</strong>。</p>
+
+<h4><strong>13.2 Godot中的实现方式</strong></h4>
+
+在C#中，数据局部性主要体现在 <strong><code class="inline-code">class</code>（引用类型）</strong> 和 <strong><code class="inline-code">struct</code>（值类型）</strong> 的区别上。
+<ul class="content-list"><li>当你创建一个<code class="inline-code">class</code>的数组时：<code class="inline-code">MyClass[] objects = new MyClass[1000];</code>，这个数组本身在内存中是连续的，但它只存储了1000个指向<code class="inline-code">MyClass</code>实例的 <strong>引用（指针）</strong>。而<code class="inline-code">MyClass</code>实例本身则散落在内存的各个角落（堆上）。遍历这个数组来处理数据会导致大量的缓存未命中。</li></ul>
+<ul class="content-list"><li>当你创建一个<code class="inline-code">struct</code>的数组时：<code class="inline-code">MyStruct[] objects = new MyStruct[1000];</code>，这个数组在内存中是 <strong>一整块连续的内存</strong>，所有<code class="inline-code">MyStruct</code>实例的数据都紧密地排列在一起。遍历这个数组将获得极佳的缓存命中率。</li></ul>
+
+因此，在Godot C#中应用数据局部性模式，关键在于对性能要求极高的系统中，使用<code class="inline-code">struct</code>数组来组织数据。
+
+<h4><strong>13.3 实现：粒子系统性能对比</strong></h4>
+
+<p class="content-paragraph">我们将创建一个简单的粒子系统，并对比两种数据组织方式的性能。</p>
+
+<p class="content-paragraph"><strong>场景1：面向对象的方式 (Array of Classes)</strong></p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// ParticleObject.cs
+public class ParticleObject
+{
+    public Vector2 Position; // class实例散落在内存中
+    public Vector2 Velocity;
+}
+
+// ParticleSystem_OOP.cs
+public void Update(double delta)
+{
+    for (int i = 0; i &lt; _particles.Length; i++)
+    {
+        _particles[i].Position += _particles[i].Velocity * (float)delta;
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># ParticleObject.gd
+class_name ParticleObject
+extends RefCounted
+
+var position: Vector2 # 对象实例分散在内存中
+var velocity: Vector2
+
+# ParticleSystem_OOP.gd
+func update_particles(delta: float) -&gt; void:
+	for i in range(_particles.size()):
+		_particles[i].position += _particles[i].velocity * delta</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>场景2：数据驱动的方式 (Arrays of Structs)</strong></p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// ParticleSystem_DOD.cs
+private Vector2[] _positions;
+private Vector2[] _velocities;
+
+public void Update(double delta)
+{
+    // _positions和_velocities数组各自在内存中是连续的
+    for (int i = 0; i &lt; _particleCount; i++)
+    {
+        _positions[i] += _velocities[i] * (float)delta;
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># ParticleSystem_DOD.gd
+var _positions: PackedVector2Array
+var _velocities: PackedVector2Array
+
+func update_particles(delta: float) -&gt; void:
+	# PackedVector2Array 在内存中是连续的
+	for i in range(_particle_count):
+		_positions[i] += _velocities[i] * delta</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>性能测试节点</strong></p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// PerformanceTestNode.cs
+using Godot;
+using System.Diagnostics;
+
+public partial class PerformanceTestNode : Node
+{
+    private const int PARTICLE_COUNT = 500000;
+
+    public override void _Ready()
+    {
+        var stopwatch = new Stopwatch();
+        
+        // 测试OOP方法
+        var particlesOOP = new ParticleObject[PARTICLE_COUNT];
+        for(int i=0; i&lt;PARTICLE_COUNT; ++i) particlesOOP[i] = new ParticleObject();
+        stopwatch.Start();
+        UpdateOOP(particlesOOP, 0.016f);
+        stopwatch.Stop();
+        GD.Print(__CODEBLOCK_4__quot;OOP approach took: {stopwatch.ElapsedMilliseconds} ms&quot;);
+
+        // 测试DOD方法
+        var positionsDOD = new Vector2[PARTICLE_COUNT];
+        var velocitiesDOD = new Vector2[PARTICLE_COUNT];
+        stopwatch.Restart();
+        UpdateDOD(positionsDOD, velocitiesDOD, 0.016f);
+        stopwatch.Stop();
+        GD.Print(__CODEBLOCK_4__quot;DOD approach took: {stopwatch.ElapsedMilliseconds} ms&quot;);
+    }
+    
+    private void UpdateOOP(ParticleObject[] particles, float delta)
+    {
+        for (int i = 0; i &lt; particles.Length; i++)
+        {
+            particles[i].Position += particles[i].Velocity * delta;
+        }
+    }
+    
+    private void UpdateDOD(Vector2[] positions, Vector2[] velocities, float delta)
+    {
+        for (int i = 0; i &lt; positions.Length; i++)
+        {
+            positions[i] += velocities[i] * delta;
+        }
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># PerformanceTestNode.gd
+extends Node
+
+const PARTICLE_COUNT = 500000
+
+func _ready() -&gt; void:
+	var start_time: int
+	
+	# 测试OOP方法
+	var particles_oop: Array[ParticleObject] = []
+	for i in range(PARTICLE_COUNT):
+		particles_oop.append(ParticleObject.new())
+	start_time = Time.get_ticks_msec()
+	update_oop(particles_oop, 0.016)
+	print(&quot;OOP方法耗时: &quot;, Time.get_ticks_msec() - start_time, &quot; ms&quot;)
+	
+	# 测试DOD方法
+	var positions_dod = PackedVector2Array()
+	var velocities_dod = PackedVector2Array()
+	positions_dod.resize(PARTICLE_COUNT)
+	velocities_dod.resize(PARTICLE_COUNT)
+	start_time = Time.get_ticks_msec()
+	update_dod(positions_dod, velocities_dod, 0.016)
+	print(&quot;DOD方法耗时: &quot;, Time.get_ticks_msec() - start_time, &quot; ms&quot;)
+
+func update_oop(particles: Array[ParticleObject], delta: float) -&gt; void:
+	for i in range(particles.size()):
+		particles[i].position += particles[i].velocity * delta
+
+func update_dod(positions: PackedVector2Array, velocities: PackedVector2Array, delta: float) -&gt; void:
+	for i in range(positions.size()):
+		positions[i] += velocities[i] * delta</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>结果</strong>: 在处理大量数据时，数据驱动的方式（DOD）通常会比面向对象的方式（OOP）快几倍甚至一个数量级，因为它最大化了数据局部性。</p>
+
+<h4><strong>13.4 使用建议与注意事项</strong></h4>
+<ul class="content-list"><li><strong>不要过早优化</strong>: 数据局部性优化会使代码的可读性变差。只在性能分析确定了瓶颈之后，才在关键的热点代码路径上应用此模式。</li></ul>
+<ul class="content-list"><li><strong>PackedArrays</strong>: 在GDScript中，使用<code class="inline-code">PackedVector2Array</code>, <code class="inline-code">PackedFloat32Array</code>等类型来获得更好的数据局部性。</li></ul>
+<ul class="content-list"><li><strong>ECS框架</strong>: 实体组件系统（Entity Component System, ECS）是将数据局部性原则应用到极致的架构模式。Godot本身不是ECS引擎，但社区中有一些C#的ECS库（如Arch）可以集成进来，用于构建超高性能的系统。</li></ul>
+<ul class="content-list"><li><strong>Godot API</strong>: 当你调用Godot引擎的API时（例如<code class="inline-code">MoveAndSlide</code>），数据会从C#的托管内存编组到引擎的非托管内存。这个过程本身有开销。因此，数据局部性优化主要适用于纯C#代码中的密集计算循环。</li></ul>
+
+<p class="content-paragraph">---</p>
+            </div>
+            
+            <div class="qr-section">
+                <img src="qr_code.png" alt="Buy Me A Coffee QR Code" />
+                <p>如果对你有帮助，Buy Me A Coffee～</p>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // 移动端目录切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                });
+            }
+        });
+    </script>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-gdscript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>

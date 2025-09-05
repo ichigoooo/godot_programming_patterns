@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>15. 对象池 (Object Pool) - Godot游戏编程模式</title>
+    <!-- Prism.js CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .hero-header {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a0a2e 50%, #0f1419 100%);
+            border-bottom: 3px solid #00ffcc;
+            padding: 35px 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.3), inset 0 1px 0 rgba(0, 255, 204, 0.2);
+            border-top: 1px solid #00ffcc;
+            z-index: 998; /* 降低z-index，确保sidebar在更高层 */
+            min-height: 180px;
+        }
+        
+        /* 扫描线效果 */
+        .hero-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            animation: scanline 4s infinite;
+            z-index: 3;
+        }
+        
+        /* 数据流背景 */
+        .hero-header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 98%, rgba(0, 255, 204, 0.03) 100%),
+                linear-gradient(180deg, transparent 98%, rgba(255, 0, 255, 0.03) 100%);
+            background-size: 20px 20px;
+            animation: dataflow 20s linear infinite;
+            z-index: 1;
+        }
+        
+        /* 额外的装饰层 */
+        .hero-header .decorative-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 204, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 204, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 10s linear infinite;
+            z-index: 1;
+        }
+        
+        .hero-header .glitch-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(255, 0, 255, 0.1) 50%, 
+                transparent 70%);
+            animation: glitchScan 3s ease-in-out infinite;
+            z-index: 2;
+        }
+        
+        @keyframes scanline {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+        
+        @keyframes dataflow {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(20px, 20px); }
+        }
+        
+        @keyframes subtitleFlicker {
+            0%, 100% { opacity: 1; }
+            90% { opacity: 1; }
+            95% { opacity: 0.7; }
+            97% { opacity: 1; }
+        }
+        
+        @keyframes diamondSpin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+        
+        @keyframes descriptionGlow {
+            0% { box-shadow: 0 0 10px rgba(0, 255, 204, 0.2); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); }
+        }
+        
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+        
+        @keyframes glitchScan {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        
+        @keyframes hudLineGlow {
+            0%, 100% { opacity: 0.3; box-shadow: 0 0 5px rgba(0, 255, 204, 0.5); }
+            50% { opacity: 1; box-shadow: 0 0 15px rgba(0, 255, 204, 0.8); }
+        }
+        
+        .cyberpunk-container {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .hero-title {
+            font-size: 3.5em;
+            color: #00ffcc;
+            text-shadow: 
+                0 0 10px #00ffcc,
+                0 0 20px #00ffcc,
+                0 0 40px #00ffcc,
+                0 0 60px #00ffcc,
+                0 0 80px rgba(0, 255, 204, 0.8);
+            margin-bottom: 12px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            animation: titleGlow 3s ease-in-out infinite alternate, titlePulse 2s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-title::before {
+            content: '🎮';
+            position: absolute;
+            left: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        
+        .hero-title::after {
+            content: '⚡';
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite reverse;
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+            100% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc, 0 0 60px #00ffcc, 0 0 80px rgba(0, 255, 204, 0.8); }
+        }
+        
+        @keyframes titlePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(-50%) rotate(0deg); }
+            50% { transform: translateY(-60%) rotate(10deg); }
+        }
+        
+        .hero-subtitle {
+            font-size: 1.3em;
+            color: #ff00ff;
+            text-shadow: 0 0 15px rgba(255, 0, 255, 0.8), 0 0 25px rgba(255, 0, 255, 0.6);
+            margin-bottom: 25px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: subtitleFlicker 4s ease-in-out infinite;
+            position: relative;
+        }
+        
+        .hero-subtitle::before,
+        .hero-subtitle::after {
+            content: '◆';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00ffcc;
+            font-size: 0.7em;
+            animation: diamondSpin 6s linear infinite;
+        }
+        
+        .hero-subtitle::before {
+            left: -30px;
+        }
+        
+        .hero-subtitle::after {
+            right: -30px;
+            animation-direction: reverse;
+        }
+        
+        .hero-description {
+            font-size: 1.0em;
+            color: #a0a0a0;
+            max-width: 800px;
+            margin: 0 auto 25px;
+            line-height: 1.6;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+            position: relative;
+            padding: 15px;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 255, 204, 0.05);
+            animation: descriptionGlow 5s ease-in-out infinite alternate;
+        }
+        
+        .hero-description::before {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        .hero-description br::after {
+            content: '> ';
+            color: #00ffcc;
+            font-weight: bold;
+            animation: cursorBlink 1s infinite;
+        }
+        
+        /* HUD 装饰元素 */
+        .hud-elements {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            margin: 20px auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* HUD边框装饰 */
+        .hud-elements::before,
+        .hud-elements::after {
+            content: '';
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            width: 100%;
+            left: 0;
+        }
+        
+        .hud-elements::before {
+            top: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite;
+        }
+        
+        .hud-elements::after {
+            bottom: -10px;
+            animation: hudLineGlow 3s ease-in-out infinite reverse;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* 电量指示器 */
+        .battery-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #00ffcc;
+        }
+        
+        .battery {
+            width: 30px;
+            height: 12px;
+            border: 1px solid #00ffcc;
+            border-radius: 2px;
+            position: relative;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+        }
+        
+        .battery::after {
+            content: '';
+            position: absolute;
+            right: -3px;
+            top: 3px;
+            width: 2px;
+            height: 6px;
+            background: #00ffcc;
+            border-radius: 0 1px 1px 0;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc);
+            border-radius: 1px;
+            animation: batteryCharge 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        @keyframes batteryCharge {
+            0% { width: 70%; }
+            50% { width: 100%; }
+            100% { width: 70%; }
+        }
+        
+        /* 像素风进度条 */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff00ff;
+        }
+        
+        .progress-container {
+            width: 80px;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #ff00ff;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff00ff, #00ffcc, #ff00ff);
+            background-size: 200% 100%;
+            animation: progressFlow 3s linear infinite;
+            width: 65%;
+            box-shadow: 0 0 8px rgba(255, 0, 255, 0.6);
+        }
+        
+        @keyframes progressFlow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* 系统状态指示 */
+        .system-status {
+            color: #00ffcc;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #00ffcc;
+            animation: statusBlink 2s ease-in-out infinite;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+        }
+        
+        @keyframes statusBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        /* 数据传输指示 */
+        .data-transfer {
+            color: #ff00ff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .transfer-icon {
+            font-size: 10px;
+            animation: dataTransfer 1s linear infinite;
+        }
+        
+        @keyframes dataTransfer {
+            0% { transform: translateX(-3px); opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { transform: translateX(3px); opacity: 0.3; }
+        }
+        
+        .geometric-line {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, #ff00ff, #00ffcc, transparent);
+            margin: 8px auto;
+            width: 400px;
+            box-shadow: 0 0 8px rgba(0, 255, 204, 0.5);
+            animation: geometricPulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes geometricPulse {
+            0%, 100% { opacity: 0.6; width: 400px; }
+            50% { opacity: 1; width: 500px; }
+        }
+        
+        /* 角落装饰 */
+        .corner-decoration {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #00ffcc;
+            z-index: 2;
+        }
+        
+        .corner-tl {
+            top: 10px;
+            left: 10px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .corner-tr {
+            top: 10px;
+            right: 10px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-bl {
+            bottom: 10px;
+            left: 10px;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-br {
+            bottom: 10px;
+            right: 10px;
+            border-left: none;
+            border-top: none;
+        }
+        
+        /* 额外的装饰元素 - 内层 */
+        .corner-tl2 {
+            top: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+        }
+        
+        .corner-tr2 {
+            top: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-top: none;
+        }
+        
+        .corner-bl2 {
+            bottom: 25px;
+            left: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .corner-br2 {
+            bottom: 25px;
+            right: 25px;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ff00ff;
+            z-index: 3;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        /* 电路板线条效果 */
+        .circuit-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        .circuit-lines::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(0, 255, 204, 0.2) 20%, 
+                rgba(255, 0, 255, 0.2) 50%, 
+                rgba(0, 255, 204, 0.2) 80%, 
+                transparent 100%);
+            animation: circuitFlow 8s linear infinite;
+        }
+        
+        .circuit-lines::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: linear-gradient(180deg, 
+                transparent 0%, 
+                rgba(255, 0, 255, 0.1) 30%, 
+                rgba(0, 255, 204, 0.1) 70%, 
+                transparent 100%);
+            animation: circuitFlow 6s linear infinite reverse;
+        }
+        
+        @keyframes circuitFlow {
+            0% { opacity: 0.2; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.2; }
+        }
+        
+        /* 加强响应式设计 */
+        @media (max-width: 768px) {
+            .hud-elements {
+                flex-direction: column;
+                gap: 10px;
+                font-size: 0.7em;
+            }
+            
+            .hud-left, .hud-right {
+                gap: 15px;
+            }
+            
+            .hero-title {
+                font-size: 2.2em;
+                letter-spacing: 2px;
+            }
+            
+            .corner-decoration {
+                width: 25px;
+                height: 25px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                top: 0;
+                border-right: none;
+                border-bottom: 2px solid #00ffcc;
+                margin-bottom: 20px;
+                padding: 15px;
+                z-index: 9999; /* 确保移动端sidebar也在最高层 */
+            }
+            
+            .main-content {
+                margin-left: 0;
+                max-width: 100%;
+                padding: 15px;
+                margin-top: 0;
+            }
+            
+            .container {
+                display: block;
+                min-height: calc(100vh - 150px);
+            }
+            
+            /* 移动端目录切换按钮 */
+            .sidebar-toggle {
+                display: block;
+                background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+                color: #0a0a0a;
+                border: none;
+                padding: 10px 15px;
+                font-family: 'Courier New', monospace;
+                font-weight: bold;
+                cursor: pointer;
+                margin-bottom: 15px;
+                border-radius: 6px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .sidebar-toggle:hover {
+                background: linear-gradient(90deg, #00cc99 0%, #00ffcc 100%);
+            }
+            
+            .sidebar.collapsed {
+                display: none;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .sidebar-toggle {
+                display: none;
+            }
+        }
+        
+        .container {
+            display: flex;
+            min-height: calc(100vh - 150px);
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: linear-gradient(180deg, #16213e 0%, #0f1419 100%);
+            border-right: 2px solid #00ffcc;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0, 255, 204, 0.1);
+            position: fixed;
+            height: calc(100vh - 200px);
+            overflow-y: auto;
+            top: 200px;
+            z-index: 9999; /* 确保sidebar在最高层 */
+            border-top: 2px solid #00ffcc;
+        }
+        
+        .sidebar h2 {
+            color: #00ffcc;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.1em;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            border-bottom: 1px solid #00ffcc;
+            padding-bottom: 10px;
+        }
+        
+        .sidebar ul {
+            list-style: none;
+        }
+        
+        .sidebar li {
+            margin-bottom: 6px;
+        }
+        
+        .sidebar .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00ffcc, transparent);
+            margin: 15px 0;
+        }
+        
+        .sidebar .home-link a {
+            color: #ffaa00;
+            background: rgba(255, 170, 0, 0.1);
+            border-left: 3px solid #ffaa00;
+            font-weight: bold;
+        }
+        
+        .sidebar .home-link a:hover {
+            background: rgba(255, 170, 0, 0.2);
+            color: #ffcc44;
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.6);
+        }
+        
+        .sidebar a {
+            color: #a0a0a0;
+            text-decoration: none;
+            padding: 8px 12px;
+            display: block;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-size: 0.9em;
+        }
+        
+        .sidebar a:hover {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .sidebar .active a {
+            background: rgba(0, 255, 204, 0.2);
+            color: #00ffcc;
+            border-left-color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+        }
+        
+        .main-content {
+            flex: 1;
+            margin-left: 300px;
+            padding: 40px;
+            max-width: calc(100% - 300px);
+            margin-top: 20px;
+            position: relative;
+            z-index: 1; /* 确保主内容在sidebar下方 */
+        }
+        
+        .page-header {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .page-header h1 {
+            color: #00ffcc;
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            text-shadow: 0 0 15px rgba(0, 255, 204, 0.4);
+        }
+        
+        .content {
+            background: rgba(22, 33, 62, 0.3);
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            color: #00ffcc;
+            margin: 30px 0 15px 0;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        .content h1 { font-size: 2em; }
+        .content h2 { font-size: 1.7em; }
+        .content h3 { font-size: 1.4em; }
+        .content h4 { font-size: 1.2em; color: #88ffaa; }
+        .content h5 { font-size: 1.1em; color: #88ffaa; }
+        .content h6 { font-size: 1em; color: #88ffaa; }
+        
+        .content-paragraph {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            line-height: 1.8;
+        }
+        
+        .content-list {
+            margin: 15px 0;
+            padding-left: 25px;
+            color: #d0d0d0;
+        }
+        
+        .content-list li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        
+        .content-list.numbered {
+            list-style-type: decimal;
+        }
+        
+        .inline-code {
+            background: rgba(0, 255, 204, 0.15);
+            color: #00ff88;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+        }
+        
+        .code-block-wrapper {
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #00ffcc;
+            box-shadow: 0 4px 15px rgba(0, 255, 204, 0.1);
+        }
+        
+        .code-block-header {
+            background: linear-gradient(90deg, #00ffcc 0%, #00cc99 100%);
+            color: #0a0a0a;
+            padding: 8px 15px;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-align: left;
+        }
+        
+        .code-language {
+            font-family: 'Consolas', 'Monaco', monospace;
+            letter-spacing: 1px;
+        }
+        
+        .code-block {
+            background: #0d1421;
+            margin: 0;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            color: #e0e0e0;
+        }
+        
+        .code-block code {
+            background: none;
+            padding: 0;
+            color: inherit;
+            border: none;
+        }
+        
+        .collapsible-section {
+            margin: 20px 0;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 8px;
+            background: rgba(22, 33, 62, 0.2);
+        }
+        
+        .collapsible-header {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2);
+            transition: background 0.3s ease;
+        }
+        
+        .collapsible-header:hover {
+            background: rgba(0, 255, 204, 0.2);
+        }
+        
+        .collapsible-content {
+            padding: 15px 20px;
+        }
+        
+        .quote-block {
+            border-left: 4px solid #00ffcc;
+            background: rgba(0, 255, 204, 0.05);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+            color: #d0d0d0;
+            font-style: italic;
+        }
+        
+        .content-link {
+            color: #00ffcc;
+            text-decoration: none;
+            border-bottom: 1px dotted #00ffcc;
+            transition: all 0.3s ease;
+        }
+        
+        .content-link:hover {
+            color: #ffffff;
+            border-bottom-style: solid;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.5);
+        }
+
+        
+        .qr-section {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid #00ffcc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0, 255, 204, 0.1);
+        }
+        
+        .qr-section img {
+            max-width: 200px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        
+        .qr-section p {
+            color: #00ffcc;
+            font-size: 1.1em;
+            text-shadow: 0 0 5px rgba(0, 255, 204, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.2em;
+            }
+            .sidebar {
+                width: 250px;
+            }
+            .main-content {
+                margin-left: 250px;
+                max-width: calc(100% - 250px);
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="hero-header">
+        <!-- 电路板线条背景 -->
+        <div class="circuit-lines"></div>
+        
+        <!-- 装饰网格层 -->
+        <div class="decorative-grid"></div>
+        
+        <!-- 故障艺术扫描层 -->
+        <div class="glitch-overlay"></div>
+        
+        <!-- 角落装饰 -->
+        <div class="corner-decoration corner-tl"></div>
+        <div class="corner-decoration corner-tr"></div>
+        <div class="corner-decoration corner-bl"></div>
+        <div class="corner-decoration corner-br"></div>
+        
+        <!-- 额外的装饰元素 -->
+        <div class="corner-decoration corner-tl2"></div>
+        <div class="corner-decoration corner-tr2"></div>
+        <div class="corner-decoration corner-bl2"></div>
+        <div class="corner-decoration corner-br2"></div>
+        
+        <div class="cyberpunk-container">
+            <!-- HUD 上部状态栏 -->
+            <div class="hud-elements">
+                <div class="hud-left">
+                    <div class="system-status">
+                        <div class="status-dot"></div>
+                        <span>SYSTEM: ONLINE</span>
+                    </div>
+                    <div class="battery-indicator">
+                        <span>PWR:</span>
+                        <div class="battery">
+                            <div class="battery-fill"></div>
+                        </div>
+                        <span>87%</span>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <div class="progress-bar">
+                        <span>DATA:</span>
+                        <div class="progress-container">
+                            <div class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="data-transfer">
+                        <span class="transfer-icon">▲▼</span>
+                        <span>SYNC</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主标题区域 -->
+            <h1 class="hero-title">🎮 Godot游戏编程模式</h1>
+            <div class="geometric-line"></div>
+            <p class="hero-subtitle">[ NEURAL LINK ESTABLISHED ]</p>
+            <p class="hero-description">
+                > ACCESSING DESIGN PATTERNS DATABASE...<br>
+                > CYBERPUNK PROGRAMMING PROTOCOLS LOADED<br>
+                > STATUS: READY FOR NEURAL DOWNLOAD
+            </p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <nav class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle">📚 教程目录</button>
+            <h2>📚 教程目录</h2>
+            <ul>
+                <li class="home-link">
+                    <a href="index.html">🏠 返回首页</a>
+                </li>
+                <li class="divider"></li><li class="">
+                    <a href="introduction.html">📖 引言</a>
+                </li>
+                <li class="">
+                    <a href="command.html">1. 命令模式 (Command)</a>
+                </li>
+                <li class="">
+                    <a href="flyweight.html">2. 享元模式 (Flyweight)</a>
+                </li>
+                <li class="">
+                    <a href="observer.html">3. 观察者模式 (Observer)</a>
+                </li>
+                <li class="">
+                    <a href="prototype.html">4. 原型 (Prototype)</a>
+                </li>
+                <li class="">
+                    <a href="game-loop.html">5. 游戏循环 (Game Loop)</a>
+                </li>
+                <li class="">
+                    <a href="update-method.html">6. 更新方法 (Update Method)</a>
+                </li>
+                <li class="">
+                    <a href="bytecode.html">7. 字节码 (Bytecode)</a>
+                </li>
+                <li class="">
+                    <a href="subclass-sandbox.html">8. 子类沙盒 (Subclass Sandbox)</a>
+                </li>
+                <li class="">
+                    <a href="type-object.html">9. 类型对象 (Type Object)</a>
+                </li>
+                <li class="">
+                    <a href="component.html">10. 组件 (Component)</a>
+                </li>
+                <li class="">
+                    <a href="event-queue.html">11. 事件队列 (Event Queue)</a>
+                </li>
+                <li class="">
+                    <a href="service-locator.html">12. 服务定位器 (Service Locator)</a>
+                </li>
+                <li class="">
+                    <a href="data-locality.html">13. 数据局部性 (Data Locality)</a>
+                </li>
+                <li class="">
+                    <a href="dirty-flag.html">14. 脏标记 (Dirty Flag)</a>
+                </li>
+                <li class="active">
+                    <a href="object-pool.html">15. 对象池 (Object Pool)</a>
+                </li>
+                <li class="">
+                    <a href="spatial-partition.html">16. 空间分区 (Spatial Partition)</a>
+                </li>
+            </ul>
+        </nav>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <h1>15. 对象池 (Object Pool)</h1>
+            </header>
+            
+            <div class="content">
+                <h3>第15章 - 对象池 (Object Pool)</h3>
+
+<h4><strong>15.1 动机</strong></h4>
+
+在许多游戏中，我们需要频繁地创建和销毁大量相同的对象。最典型的例子就是射击游戏中的 <strong>子弹</strong>。玩家或敌人可能在短时间内发射成百上千颗子弹。如果每一颗子弹都通过<code class="inline-code">new</code>或<code class="inline-code">Instantiate()</code>来创建，并在击中或飞出屏幕后通过<code class="inline-code">QueueFree()</code>销毁，会带来两个严重的性能问题：
+<ol class="content-list numbered"><li > <strong>内存分配开销</strong>: 频繁地向操作系统请求和释放内存是一个相对较慢的操作，可能导致内存碎片。</li></ol>
+<ol class="content-list numbered"><li > <strong>垃圾回收 (GC)</strong>: 在像C#这样的托管语言中，被销毁的对象不会立即释放内存，而是等待垃圾回收器（GC）来清理。当GC运行时，它可能会暂停整个程序的执行，导致游戏出现明显的 <strong>卡顿或掉帧</strong>。这是游戏开发中的大忌。</li></ol>
+
+<p class="content-paragraph">对象池模式通过 <strong>重用对象</strong> 来解决这个问题。它维护一个"池子"，里面装着一堆预先分配好的、非活动的对象。当需要一个新对象时，我们不创建新的，而是从池子中"租借"一个，并将其激活。当这个对象不再需要时，我们不销毁它，而是将其"归还"到池子中，并将其设为非活动状态，以备下次使用。</p>
+
+<h4><strong>15.2 Godot中的实现方式</strong></h4>
+
+这个模式在Godot中非常普遍和有效。我们可以创建一个<code class="inline-code">ObjectPool</code>节点，它负责实例化、存储、租借和回收特定类型的节点（通常是<code class="inline-code">PackedScene</code>的实例）。
+
+<h4><strong>15.3 实现：子弹池</strong></h4>
+
+<p class="content-paragraph">我们将创建一个可用于任何节点的通用对象池，并用它来管理子弹。</p>
+
+<p class="content-paragraph"><strong>1. 创建对象池</strong></p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// ObjectPool.cs
+using Godot;
+using System.Collections.Generic;
+
+public partial class ObjectPool : Node
+{
+    [Export] private PackedScene _scene;
+    [Export] private int _initialSize = 20;
+
+    private Queue&lt;Node&gt; _pool = new Queue&lt;Node&gt;();
+
+    public override void _Ready()
+    {
+        for (int i = 0; i &lt; _initialSize; i++)
+        {
+            AddObjectToPool();
+        }
+    }
+
+    private void AddObjectToPool()
+    {
+        Node instance = _scene.Instantiate();
+        instance.SetProcess(false);
+        instance.SetPhysicsProcess(false);
+        instance.Visible = false;
+        AddChild(instance);
+        _pool.Enqueue(instance);
+    }
+
+    public Node Acquire()
+    {
+        if (_pool.Count == 0)
+        {
+            GD.Print(&quot;Pool is empty, creating a new object.&quot;);
+            AddObjectToPool();
+        }
+
+        Node obj = _pool.Dequeue();
+        obj.SetProcess(true);
+        obj.SetPhysicsProcess(true);
+        obj.Visible = true;
+        return obj;
+    }
+
+    public void Release(Node obj)
+    {
+        if (obj == null) return;
+        
+        obj.SetProcess(false);
+        obj.SetPhysicsProcess(false);
+        obj.Visible = false;
+        // 在这里可以添加一个Reset()方法来重置对象状态
+        if (obj is IPoolable poolable)
+        {
+            poolable.Reset();
+        }
+        _pool.Enqueue(obj);
+    }
+}
+
+// 可选的接口，用于重置对象状态
+public interface IPoolable
+{
+    void Reset();
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># ObjectPool.gd
+class_name ObjectPool
+extends Node
+
+@export var _scene: PackedScene
+@export var _initial_size: int = 20
+
+var _pool: Array[Node] = []
+
+func _ready() -&gt; void:
+	for i in range(_initial_size):
+		add_object_to_pool()
+
+func add_object_to_pool() -&gt; void:
+	var instance = _scene.instantiate()
+	instance.set_process(false)
+	instance.set_physics_process(false)
+	instance.visible = false
+	add_child(instance)
+	_pool.append(instance)
+
+func acquire() -&gt; Node:
+	if _pool.is_empty():
+		print(&quot;池为空，创建新对象&quot;)
+		add_object_to_pool()
+	
+	var obj = _pool.pop_front()
+	obj.set_process(true)
+	obj.set_physics_process(true)
+	obj.visible = true
+	return obj
+
+func release(obj: Node) -&gt; void:
+	if obj == null:
+		return
+	
+	obj.set_process(false)
+	obj.set_physics_process(false)
+	obj.visible = false
+	# 在这里可以添加一个reset()方法来重置对象状态
+	if obj.has_method(&quot;reset&quot;):
+		obj.reset()
+	_pool.append(obj)</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>2. 修改子弹脚本</strong></p>
+
+<p class="content-paragraph">子弹不再自我销毁，而是通知池来回收它。</p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// Bullet.cs
+public partial class Bullet : Area2D, IPoolable
+{
+    public ObjectPool Pool { get; set; }
+
+    // ... Start() 和 _PhysicsProcess() 方法 ...
+
+    private void OnHitSomething()
+    {
+        // 不再调用 QueueFree()
+        Pool.Release(this);
+    }
+    
+    public void Reset()
+    {
+        // 重置需要改变的状态
+        this.Position = Vector2.Zero;
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># Bullet.gd
+extends Area2D
+
+var pool: ObjectPool
+
+# ... start() 和 _physics_process() 方法 ...
+
+func _on_hit_something() -&gt; void:
+	# 不再调用 queue_free()
+	pool.release(self)
+
+func reset() -&gt; void:
+	# 重置需要改变的状态
+	position = Vector2.ZERO</code></pre>
+        </div>
+            </div>
+        </details>
+
+<p class="content-paragraph"><strong>3. 在武器中使用池</strong></p>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔷 C# 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">CSHARP</span>
+            </div>
+            <pre class="code-block"><code class="language-csharp">// Gun.cs
+using Godot;
+
+public partial class Gun : Node2D
+{
+    [Export] private ObjectPool _bulletPool;
+
+    public void Shoot()
+    {
+        Bullet bullet = _bulletPool.Acquire() as Bullet;
+        if (bullet != null)
+        {
+            bullet.Pool = _bulletPool; // 将池的引用传给子弹
+            bullet.Start(this.GlobalPosition, this.GlobalRotationDegrees);
+        }
+    }
+}</code></pre>
+        </div>
+            </div>
+        </details>
+
+<details class="collapsible-section" open>
+            <summary class="collapsible-header">🔶 GDScript 版本</summary>
+            <div class="collapsible-content">
+                <div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-language">GDSCRIPT</span>
+            </div>
+            <pre class="code-block"><code class="language-gdscript"># Gun.gd
+extends Node2D
+
+@export var _bullet_pool: ObjectPool
+
+func shoot() -&gt; void:
+	var bullet = _bullet_pool.acquire() as Bullet
+	if bullet != null:
+		bullet.pool = _bullet_pool # 将池的引用传给子弹
+		bullet.start(global_position, global_rotation_degrees)</code></pre>
+        </div>
+            </div>
+        </details>
+
+<h4><strong>15.4 游戏案例</strong></h4>
+<ul class="content-list"><li><strong>射击游戏（Shmups）</strong>: 管理海量的子弹和爆炸效果。</li></ul>
+<ul class="content-list"><li><strong>即时战略游戏 (RTS)</strong>: 管理单位死亡时产生的尸体、血液等视觉效果。</li></ul>
+<ul class="content-list"><li><strong>粒子系统</strong>: Godot的粒子系统内部就使用了类似对象池的机制来循环使用粒子。</li></ul>
+<ul class="content-list"><li><strong>任何需要频繁生/灭对象的场景</strong>: 敌人、金币、伤害数值显示等。</li></ul>
+
+<h4><strong>15.5 使用建议与注意事项</strong></h4>
+<ul class="content-list"><li><strong>重置状态</strong>: 从池中取出的对象可能还保留着上一次使用的状态（如位置、速度）。在<code class="inline-code">Acquire</code>或<code class="inline-code">Release</code>时，务必重置所有必要的状态。创建一个<code class="inline-code">IPoolable</code>接口和<code class="inline-code">Reset()</code>方法是一个好习惯。</li></ul>
+<ul class="content-list"><li><strong>池的大小</strong>: 池的初始大小需要根据游戏的典型负载来调整。一个太小的池仍然会导致运行时分配，一个太大的池则会预先占用过多内存。可以实现一个能动态增长的池。</li></ul>
+<ul class="content-list"><li><strong>调试</strong>: 当对象被"归还"后，它仍然存在于场景树中（只是不活动）。这在调试时可能会造成困惑。确保你清楚地区分了活动和非活动对象。</li></ul>
+
+<p class="content-paragraph">---</p>
+            </div>
+            
+            <div class="qr-section">
+                <img src="qr_code.png" alt="Buy Me A Coffee QR Code" />
+                <p>如果对你有帮助，Buy Me A Coffee～</p>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        // 移动端目录切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                });
+            }
+        });
+    </script>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-gdscript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Godot游戏编程模式 - 首页</title>
+    <!-- Prism.js CSS for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 2px solid #00ffcc;
+            border-radius: 20px;
+            padding: 60px 50px;
+            box-shadow: 0 15px 50px rgba(0, 255, 204, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 首页装饰元素 */
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(0, 255, 204, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 204, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+            animation: gridMove 15s linear infinite;
+        }
+        
+        .header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, 
+                transparent 30%, 
+                rgba(255, 0, 255, 0.05) 50%, 
+                transparent 70%);
+            animation: glitchScan 4s ease-in-out infinite;
+        }
+        
+        .header h1 {
+            color: #00ffcc;
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(0, 255, 204, 0.6);
+            position: relative;
+            z-index: 5;
+            animation: titleGlow 3s ease-in-out infinite alternate;
+        }
+        
+        .header h1::before {
+            content: '🎮';
+            position: absolute;
+            left: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite;
+        }
+        
+        .header h1::after {
+            content: '⚡';
+            position: absolute;
+            right: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            animation: iconFloat 3s ease-in-out infinite reverse;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            color: #a0a0a0;
+        }
+        
+        .chapters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 50px;
+        }
+        
+        .chapter-card {
+            background: linear-gradient(145deg, #16213e 0%, #0f1419 100%);
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            border-radius: 15px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .chapter-card:hover {
+            border-color: #00ffcc;
+            box-shadow: 0 10px 40px rgba(0, 255, 204, 0.2);
+            transform: translateY(-5px);
+        }
+        
+        .chapter-card h3 {
+            margin-bottom: 15px;
+        }
+        
+        .chapter-card a {
+            color: #00ffcc;
+            text-decoration: none;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+        }
+        
+        .chapter-card:hover a {
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.8);
+        }
+        
+        /* 引言卡片特殊样式 */
+        .introduction-card {
+            background: linear-gradient(145deg, #1a2e4a 0%, #16213e 100%);
+            border: 2px solid rgba(255, 170, 0, 0.5);
+            box-shadow: 0 8px 25px rgba(255, 170, 0, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .introduction-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 170, 0, 0.1), transparent);
+            animation: introductionShine 3s ease-in-out infinite;
+        }
+        
+        .introduction-card h3 a {
+            color: #ffaa00;
+            font-size: 1.2em;
+        }
+        
+        .introduction-card:hover h3 a {
+            color: #ffcc44;
+            text-shadow: 0 0 15px rgba(255, 170, 0, 0.8);
+        }
+        
+        .chapter-intro-desc {
+            color: #ffcc88;
+            font-size: 0.9em;
+            margin-top: 8px;
+            font-style: italic;
+            opacity: 0.8;
+        }
+        
+        @keyframes introductionShine {
+            0% { left: -100%; }
+            50% { left: 100%; }
+            100% { left: 100%; }
+        }
+        
+        .qr-section {
+            background: linear-gradient(90deg, #16213e 0%, #0f1419 100%);
+            border: 2px solid #00ffcc;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 15px 50px rgba(0, 255, 204, 0.2);
+        }
+        
+        .qr-section img {
+            max-width: 200px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        }
+        
+        .qr-section p {
+            color: #00ffcc;
+            font-size: 1.2em;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.4);
+        }
+        
+        /* 首页动画 */
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(30px, 30px); }
+        }
+        
+        @keyframes glitchScan {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        
+        @keyframes titleGlow {
+            0% { text-shadow: 0 0 20px #00ffcc, 0 0 40px #00ffcc; }
+            100% { text-shadow: 0 0 30px #00ffcc, 0 0 60px #00ffcc, 0 0 80px rgba(0, 255, 204, 0.8); }
+        }
+        
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(-50%) rotate(0deg); }
+            50% { transform: translateY(-60%) rotate(10deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎮 Godot游戏编程模式</h1>
+            <p>专业游戏开发者的设计模式指南</p>
+        </header>
+        
+        <div class="chapters-grid">
+            <div class="chapter-card introduction-card">
+                <h3><a href="introduction.html">📖 引言</a></h3>
+                <p class="chapter-intro-desc">学习设计模式的最佳指南和入门教程</p>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="command.html">1. 命令模式 (Command)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="flyweight.html">2. 享元模式 (Flyweight)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="observer.html">3. 观察者模式 (Observer)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="prototype.html">4. 原型 (Prototype)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="game-loop.html">5. 游戏循环 (Game Loop)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="update-method.html">6. 更新方法 (Update Method)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="bytecode.html">7. 字节码 (Bytecode)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="subclass-sandbox.html">8. 子类沙盒 (Subclass Sandbox)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="type-object.html">9. 类型对象 (Type Object)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="component.html">10. 组件 (Component)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="event-queue.html">11. 事件队列 (Event Queue)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="service-locator.html">12. 服务定位器 (Service Locator)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="data-locality.html">13. 数据局部性 (Data Locality)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="dirty-flag.html">14. 脏标记 (Dirty Flag)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="object-pool.html">15. 对象池 (Object Pool)</a></h3>
+            </div>
+        <div class="chapter-card">
+                <h3><a href="spatial-partition.html">16. 空间分区 (Spatial Partition)</a></h3>
+            </div>
+        </div>
+        
+        <div class="qr-section">
+            <img src="qr_code.png" alt="Buy Me A Coffee QR Code" />
+            <p>如果对你有帮助，Buy Me A Coffee～</p>
+        </div>
+    </div>
+    
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-gdscript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+</body>
+</html>
