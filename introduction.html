@@ -1068,11 +1068,11 @@
 
 <p class="content-paragraph">2023 年 9 月，Unity Runtime Fee 政策发布的那天，我在群里跟着起哄调侃“Unity大概是嫌用户太多”。经历了很多挣扎，我逐渐踏上了学习 Godot 引擎的道路，开始了这场从商业引擎到开源世界的迁徙。</p>
 
-<p class="content-paragraph">《游戏编程模式》这本书，我想很多人和我一样，在 Unity 时代翻过几遍。它把头疼的架构问题拆成了可落地的模式。在 Godot 里实践这些模式时，我意识引擎的基因差异。<strong>Unity 的 Component/GameObject 架构和 Godot 的 Node 树，决定了很多模式的落地方案需要重写。</strong></p>
+<p class="content-paragraph"><a href="https://gameprogrammingpatterns.com/">《游戏编程模式》</a>这本书，我想很多人和我一样，在 Unity 时代翻过几遍。它把头疼的架构问题拆成了可落地的模式。在 Godot 里实践这些模式时，我意识引擎的基因差异。<strong>Unity 的 Component/GameObject 架构和 Godot 的 Node 树，决定了很多模式的落地方案需要重写。</strong></p>
 
 <p class="content-paragraph">于是有了这个指南。</p>
 
-<p class="content-paragraph">这不是简单的翻译，也不是“把 C#代码换成 GDScript”的体力活。我花了一段时间， 当然也接住了，把书中 19 个经典模式在 Godot4.2 里重新实现：用 Signal 替代事件委托，用 Node 组合替代继承，用内置的动画状态机简化状态模式……每个模式都保留了核心思想，但因地制宜。代码部分提供了 C#和 GDScript 的双版本——如果你像我一样有 Unity 背景，看着 C#会更亲切；如果你想深入引擎风格，GDScript 的实现会更“Godot味儿”。</p>
+<p class="content-paragraph">这不是简单的翻译，也不是“把 C#代码换成 GDScript”的体力活。我花了一段时间， 也借助了 AI 的力量进行了一些整理，把书中 19 个经典模式在 Godot4.2 里重新实现：用 Signal 替代事件委托，用 Node 组合替代继承，用内置的动画状态机简化状态模式……每个模式都保留了核心思想，但因地制宜。代码部分提供了 C#和 GDScript 的双版本——如果你像我一样有 Unity 背景，看着 C#会更亲切；如果你想深入引擎风格，GDScript 的实现会更“Godot味儿”。</p>
 
 <p class="content-paragraph">开源社区教会我一件事：贡献不是一定要做惊天动地的大项目。把踩过的坑整理成文档，让一个后来者少走弯路，就是对开源最好的支持。希望这个指南，能成为你在 Node 树里辗转时的手边小册子，或是在 C#项目里调试信号时的参考资料。</p>
 
