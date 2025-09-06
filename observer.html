@@ -1073,7 +1073,7 @@
 最糟糕的实现方式是让这些系统直接相互引用和调用。比如，让玩家角色 <code class="inline-code">Player</code> 持有对 <code class="inline-code">UI</code>、<code class="inline-code">ScoreManager</code>、<code class="inline-code">AudioManager</code> 的直接引用：
 
 <details class="collapsible-section" open>
-            <summary class="collapsible-header">🔷 C# 版本（反模式）</summary>
+            <summary class="collapsible-header">🔷 C# 版本（反面教材）</summary>
             <div class="collapsible-content">
                 <div class="code-block-wrapper">
             <div class="code-block-header">
@@ -1102,7 +1102,7 @@ public partial class Player : CharacterBody2D
         </details>
 
 <details class="collapsible-section" open>
-            <summary class="collapsible-header">🔶 GDScript 版本（反模式）</summary>
+            <summary class="collapsible-header">🔶 GDScript 版本（反面教材）</summary>
             <div class="collapsible-content">
                 <div class="code-block-wrapper">
             <div class="code-block-header">
@@ -1126,7 +1126,7 @@ func die() -&gt; void:
             </div>
         </details>
 
-这种方式会导致"意大利面条式代码"，系统之间高度耦合，难以维护和扩展。如果想添加一个新的系统来响应玩家死亡（比如一个成就系统），就必须修改<code class="inline-code">Player</code>类的代码。这违反了"开闭原则"。
+这种方式会导致屎山代码，系统之间高度耦合，难以维护和扩展。如果想添加一个新的系统来响应玩家死亡（比如一个成就系统），就必须修改<code class="inline-code">Player</code>类的代码。这违反了"开闭原则"。
 
 <p class="content-paragraph">观察者模式提供了一个完美的解决方案：定义一个"主题"（Subject）或"被观察者"，它维护一个"观察者"（Observer）列表。当主题的状态发生改变时，它会遍历并通知所有观察者，而无需知道观察者的具体身份或它们将如何响应。</p>
 
