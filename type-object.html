@@ -1077,7 +1077,7 @@
 类型对象模式通过将"类型"的定义从类中分离出来，放到一个独立的"类型对象"中来解决这个问题。现在，我们只需要一个<code class="inline-code">Monster</code>类。每个<code class="inline-code">Monster</code>实例都包含一个对其"类型对象"的引用。这个类型对象存储了该怪物类型所有共享的属性，如最大生命值、攻击力、模型、叫声、掉落物等。
 
 <h4><strong>9.2 Godot中的实现方式</strong></h4>
-
+<strong>使用[GlobalClass]标签</strong>，将类注册到全局命名空间，将自定义类注册为Godot的全局类，使用这个标签的类，会出现在 Godot 编辑器的类型选择器中。
 这个模式在Godot中实现起来非常优雅，它完美地结合了 <strong>享元模式</strong> 和 <strong>原型模式</strong> 的思想。我们的"类型对象"就是一个 <strong>自定义资源（<code class="inline-code">Resource</code>）</strong>。
 <ul class="content-list"><li><strong>类型对象</strong>: 我们创建一个<code class="inline-code">MonsterType.cs</code>脚本，继承自<code class="inline-code">Resource</code>。这个资源将包含所有同种怪物共享的数据。</li></ul>
 <ul class="content-list"><li><strong>主体对象</strong>: 我们创建一个<code class="inline-code">Monster.cs</code>脚本（附加到一个<code class="inline-code">CharacterBody2D/3D</code>节点上）。这个节点将持有一个对<code class="inline-code">MonsterType</code>资源的引用，并根据其类型数据来配置自己。</li></ul>
